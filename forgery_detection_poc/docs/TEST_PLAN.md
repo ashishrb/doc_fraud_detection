@@ -5,6 +5,8 @@ Evidence from code: UI flow in `static/index.html` (fileInput L106, candidateId 
 
 Note on environment: external LLM/Azure/heavy-model paths are not provisioned, so cross-doc reasoning uses the documented rule-based fallback. This does NOT affect the assertions below — all are produced by the always-on agents + rule-based cross-doc.
 
+v1.1 note: Agent 4 resolves templates via the `TemplateStore` abstraction and Step 3 OOD uses the persisted `TemplateEmbeddingIndex` (FAISS, seeded from `templates/` on first run). With the shipped placeholder templates these run on the `local` backend and do not change the assertions below; switching to Azure Blob is config-only (`TEMPLATE_SOURCE=azure_blob`). See `docs/COVERAGE_MATRIX.md` §3d.
+
 ## Primary flow (single recording): clean + forged pair
 
 Setup state already done: server running, browser open, window maximized.

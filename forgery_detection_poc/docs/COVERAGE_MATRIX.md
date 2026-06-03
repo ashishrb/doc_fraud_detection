@@ -18,7 +18,7 @@ every API/weight-dependent path has a **ready-to-run procedure** below.
 | A1 | Metadata | No | Producer/creator is a known PDF editor, or modDate after creationDate | Yes | **FIRED** score 0.60 |
 | A2 | Image Forensics (ELA + noise) | No (heavy: TruFor/MVSS-Net optional) | Fused ELA+noise 99th-pct ≥ 0.40 over a region | Yes | **FIRED** score 0.41 |
 | A3 | Font & Layout | No | A text line's font/size deviates from the page's dominant font | Yes | **FIRED** score 0.65 |
-| A4 | Template Matching (SSIM) | No (needs an authentic template registered) | Best-template SSIM < 0.70 with deviation regions | Yes | **FIRED** score 0.33 (SSIM 0.666) |
+| A4 | Template Matching (SSIM) | No (templates via TemplateStore; authentic corpus optional) | Best-template SSIM < 0.70 with deviation regions | Yes | **FIRED** score 0.33 (SSIM 0.666) |
 | A5 | Duplicate / Similarity | No | Exact SHA-256 / near-duplicate (pHash) of a previously-seen doc | Yes | **FIRED** score 1.00 |
 | A6 | Temporal Consistency | No | Future-dated value, date inversion, or gap > 183 days | Yes | **FIRED** score 0.70 |
 | A7 | NER / Semantic | No | ORG entity within edit-distance ≤ 2 of a known legitimate name | Yes | **FIRED** score 0.75 |
@@ -33,6 +33,13 @@ second OCR engine (PaddleOCR), which is the no-key flag described in §3.
 Cross-document reasoning (Step 5) also runs today via the **rule-based fallback**
 (`designation_mismatch`, `entity_mismatch`, `salary_break`); the **LLM backend** is the
 API-dependent upgrade (see §3).
+
+**v1.1 additions (template & OOD infrastructure):** Agent 4 now resolves templates through a
+**TemplateStore** abstraction (`pipeline/template_store.py`, `local`/`azure_blob` backends,
+switched by `TEMPLATE_SOURCE` — config-only). Step 3 OOD detection compares the DiT embedding
+against a persisted **TemplateEmbeddingIndex** (`pipeline/template_embedding_index.py`, FAISS,
+seeded from `templates/` on first run). Two manual **operator tools** ingest an authentic corpus
+when one is available (see §3e) — neither runs automatically.
 
 ---
 
@@ -101,7 +108,27 @@ A10 fires when ≥2 engines disagree on a critical field (`pipeline/agents/agent
 A purpose-built A10 fixture (a doc whose ambiguous glyphs make engines disagree, e.g. `O`/`0`,
 `1`/`l`) can be added once a 2nd engine exists — flagged as the one remaining fixture to build.
 
-### 3d. Heavy DL models (no API key — just weights + ideally a GPU)
+### 3d. Authentic-template corpus → Azure Blob + operator tools (v1.1, no API key)
+When authentic organizational templates/documents are available, ingest them to sharpen Agent 4
+template matching and Step 3 OOD detection — **config-only**, no code changes:
+```bash
+# Option A: local folder — drop files under templates/<doc_type>/ then:
+python scripts/index_templates.py --source local        # OOD FAISS index (incremental)
+python scripts/finetune_agent9.py --source local        # retrain A9 novelty -> models/agent9_weights
+
+# Option B: Azure Blob (organised as <container>/<doc_type>/<file>)
+export TEMPLATE_SOURCE=azure_blob
+export AZURE_BLOB_CONNECTION_STRING="<connection-string>"
+export AZURE_BLOB_TEMPLATE_CONTAINER="authentic-templates"   # default
+python scripts/index_templates.py --source azure_blob
+python scripts/finetune_agent9.py --source azure_blob
+```
+Notes: `index_templates.py` is incremental (re-running only adds new files, keyed by
+`<doc_type>/<filename>`). `finetune_agent9.py` writes `models/agent9_weights/patchcore_pca.npz`,
+which Agent 9 auto-loads next run (else it uses the per-document fallback). **Do not fine-tune on
+the shipped synthetic placeholder templates** — it makes A9 over-flag; use a real corpus only.
+
+### 3e. Heavy DL models (no API key — just weights + ideally a GPU)
 These degrade gracefully today and activate when weights are present:
 - Document understanding: `microsoft/layoutlmv3-base`, `naver-clova-ix/donut-base`, `microsoft/dit-base` (auto-download via `transformers` + `torch`).
 - A2 forensics: TruFor weights → `models/trufor/`; MVSS-Net → `models/mvssnet.pt`.
@@ -121,6 +148,11 @@ export AZURE_DOC_INTELLIGENCE_ENDPOINT=...   AZURE_DOC_INTELLIGENCE_KEY=...
 export ENABLE_PADDLEOCR=1
 python test_matrix.py                # re-confirms A1-A9, A11 + now A10
 python dry_run.py                    # confirms LLM backend + azure OCR engine
+
+# Optional (v1.1): once an authentic corpus exists, sharpen A4 + Step-3 OOD
+export TEMPLATE_SOURCE=azure_blob AZURE_BLOB_CONNECTION_STRING=... AZURE_BLOB_TEMPLATE_CONTAINER=authentic-templates
+python scripts/index_templates.py --source azure_blob
+python scripts/finetune_agent9.py --source azure_blob
 ```
 Expected after keys: **11/11 agents fire**, cross-doc backend = `openai:...`/`anthropic:...`,
 `ocr_engines_available` includes `tesseract`+`paddleocr`(+`azure`).
