@@ -22,3 +22,4 @@ adversarial_patterns/*
 *.log
 .DS_Store
 dry_run_output/
+test_matrix_output/
