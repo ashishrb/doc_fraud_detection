@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Document Forgery Detection POC</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449; --txt: #e2e8f0;
+    --muted: #94a3b8; --red: #dc2626; --amber: #f59e0b; --yellow: #eab308;
+    --green: #16a34a; --blue: #3b82f6; --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--txt); }
+  header { padding: 18px 28px; border-bottom: 1px solid var(--border);
+           display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--border);
+           border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .panel h2 { font-size: 15px; margin: 0 0 14px; text-transform: uppercase;
+              letter-spacing: .04em; color: var(--muted); }
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  input[type=text], select { background: var(--panel2); color: var(--txt);
+      border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px;
+      font-size: 14px; width: 100%; }
+  .row { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+  .file-row { display: grid; grid-template-columns: 1fr 220px; gap: 12px;
+      align-items: center; background: var(--panel2); padding: 10px 12px;
+      border-radius: 8px; margin-bottom: 8px; }
+  .file-row .fname { font-size: 13px; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; }
+  button { background: var(--blue); color: white; border: 0; border-radius: 8px;
+      padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  button.secondary { background: var(--panel2); border: 1px solid var(--border); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .banner { border-radius: 12px; padding: 22px 26px; display: flex;
+      align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .banner.P0 { background: rgba(220,38,38,.15); border: 1px solid var(--red); }
+  .banner.P1 { background: rgba(245,158,11,.15); border: 1px solid var(--amber); }
+  .banner.P2 { background: rgba(22,163,74,.15); border: 1px solid var(--green); }
+  .banner .band { font-size: 34px; font-weight: 800; }
+  .banner.P0 .band { color: var(--red); } .banner.P1 .band { color: var(--amber); }
+  .banner.P2 .band { color: var(--green); }
+  .banner .score { font-size: 30px; font-weight: 700; }
+  .doc-card { border: 1px solid var(--border); border-radius: 10px;
+      margin-bottom: 18px; overflow: hidden; }
+  .doc-head { padding: 14px 16px; background: var(--panel2);
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 8px; }
+  .pill { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+  .pill.P0 { background: var(--red); } .pill.P1 { background: var(--amber); color:#1a1a1a;}
+  .pill.P2 { background: var(--green); }
+  .doc-body { padding: 16px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .doc-body { grid-template-columns: 1fr; }
+      .file-row { grid-template-columns: 1fr; } }
+  .viewer { position: relative; }
+  .canvas-wrap { position: relative; border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden; background: #0b1220; }
+  canvas { display: block; width: 100%; height: auto; }
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .toggles label { display: flex; align-items: center; gap: 6px; font-size: 12px;
+      color: var(--txt); background: var(--panel2); padding: 5px 9px;
+      border-radius: 6px; margin: 0; cursor: pointer; }
+  .tooltip { position: fixed; z-index: 50; background: #000; color: #fff;
+      border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+      font-size: 12px; max-width: 280px; pointer-events: none; display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border);
+      vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .shap-row { display: grid; grid-template-columns: 160px 1fr 60px;
+      align-items: center; gap: 10px; margin-bottom: 7px; font-size: 13px; }
+  .shap-bar { height: 16px; background: var(--blue); border-radius: 4px; }
+  .finding { font-size: 13px; padding: 8px 10px; border-left: 3px solid var(--amber);
+      background: var(--panel2); border-radius: 6px; margin-bottom: 6px; }
+  .finding.sel { outline: 2px solid var(--blue); }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--muted); margin:8px 0;}
+  .legend span { display:inline-flex; align-items:center; gap:5px;}
+  .sw { width:12px; height:12px; border-radius:3px; display:inline-block;}
+  .muted { color: var(--muted); font-size: 13px; }
+  .spinner { display:none; margin-left:10px; }
+  .spinner.on { display:inline-block; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Document Forgery Detection</h1>
+  <span class="sub">multi-agent forensic analysis &middot; POC</span>
+</header>
+<main>
+  <!-- Upload panel -->
+  <section class="panel" id="uploadPanel">
+    <h2>1 &middot; Upload candidate documents</h2>
+    <div class="row">
+      <div style="flex:1">
+        <label for="candidateId">Candidate ID</label>
+        <input type="text" id="candidateId" placeholder="e.g. CAND-00123" value="CAND-DEMO" />
+      </div>
+    </div>
+    <label>Documents (1&ndash;5: PDF, DOCX, JPG, PNG, TIFF)</label>
+    <input type="file" id="fileInput" multiple
+           accept=".pdf,.docx,.jpg,.jpeg,.png,.tiff,.tif" />
+    <div id="fileRows" style="margin-top:12px"></div>
+    <div class="row" style="margin-top:14px">
+      <button id="analyzeBtn">Analyze documents</button>
+      <span class="spinner muted" id="spinner">Analyzing&hellip; this can take a moment.</span>
+    </div>
+  </section>
+
+  <!-- Results panel -->
+  <section id="results" class="hidden">
+    <div class="banner" id="banner">
+      <div><div class="muted">Overall verdict</div><div class="band" id="overallBand">P2</div></div>
+      <div style="text-align:right"><div class="muted">Fraud score</div>
+        <div class="score" id="overallScore">0%</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Summary</h2>
+      <div id="summary" class="muted"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="secondary" id="exportBtn">Export verdict JSON</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Per-document analysis</h2>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--red)"></span>high (&gt;0.75)</span>
+        <span><span class="sw" style="background:var(--amber)"></span>medium (0.4&ndash;0.75)</span>
+        <span><span class="sw" style="background:var(--yellow)"></span>low / info</span>
+      </div>
+      <div id="docs"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Cross-document contradictions</h2>
+      <div id="contradictions"></div>
+    </div>
+  </section>
+</main>
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const AGENT_COLORS = {};
+let lastVerdict = null;
+
+const fileInput = document.getElementById('fileInput');
+const fileRows = document.getElementById('fileRows');
+const DOC_TYPES = ["payslip","experience_letter","offer_letter","form16","education_certificate","other"];
+
+fileInput.addEventListener('change', () => {
+  fileRows.innerHTML = '';
+  [...fileInput.files].slice(0,5).forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'file-row';
+    const opts = DOC_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+    div.innerHTML = `<div class="fname" title="${f.name}">${f.name}</div>
+      <select data-idx="${i}">${opts}</select>`;
+    fileRows.appendChild(div);
+  });
+  if (fileInput.files.length > 5) alert('Only the first 5 files will be analyzed.');
+});
+
+document.getElementById('analyzeBtn').addEventListener('click', analyze);
+document.getElementById('exportBtn').addEventListener('click', () => {
+  if (!lastVerdict) return;
+  const blob = new Blob([JSON.stringify(lastVerdict, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `verdict_${lastVerdict.candidate_id || 'candidate'}.json`;
+  a.click();
+});
+
+async function analyze() {
+  const files = [...fileInput.files].slice(0,5);
+  if (!files.length) { alert('Select at least one document.'); return; }
+  const fd = new FormData();
+  fd.append('candidate_id', document.getElementById('candidateId').value || 'CAND');
+  const selects = [...fileRows.querySelectorAll('select')];
+  files.forEach((f, i) => {
+    fd.append('files', f);
+    fd.append('doc_types', selects[i] ? selects[i].value : 'other');
+  });
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true; document.getElementById('spinner').classList.add('on');
+  try {
+    const resp = await fetch('/analyze', { method: 'POST', body: fd });
+    if (!resp.ok) throw new Error('Server error: ' + resp.status + ' ' + await resp.text());
+    const verdict = await resp.json();
+    lastVerdict = verdict;
+    renderVerdict(verdict);
+  } catch (e) {
+    alert('Analysis failed: ' + e.message);
+  } finally {
+    btn.disabled = false; document.getElementById('spinner').classList.remove('on');
+  }
+}
+
+function pct(x){ return Math.round((x||0)*100) + '%'; }
+function colorFor(conf){
+  if (conf > 0.75) return {b:'#dc2626', f:'rgba(220,38,38,0.20)'};
+  if (conf >= 0.4) return {b:'#f59e0b', f:'rgba(245,158,11,0.20)'};
+  return {b:'#eab308', f:'rgba(234,179,8,0.10)'};
+}
+
+function renderVerdict(v) {
+  document.getElementById('results').classList.remove('hidden');
+  const banner = document.getElementById('banner');
+  banner.className = 'banner ' + v.band;
+  document.getElementById('overallBand').textContent = v.band;
+  document.getElementById('overallScore').textContent = pct(v.fraud_score);
+  const s = v.summary || {};
+  document.getElementById('summary').innerHTML =
+    `${s.n_documents||0} document(s) analyzed &middot; ${s.n_contradictions||0} cross-document contradiction(s) &middot; ` +
+    `bands: P0=${(s.bands||{}).P0||0}, P1=${(s.bands||{}).P1||0}, P2=${(s.bands||{}).P2||0} &middot; ` +
+    `cross-doc engine: ${v.cross_doc_backend||'n/a'}`;
+
+  const docs = document.getElementById('docs');
+  docs.innerHTML = '';
+  v.documents.forEach(d => docs.appendChild(renderDoc(d)));
+  renderContradictions(v.cross_doc_contradictions || []);
+}
+
+function renderDoc(d) {
+  const card = document.createElement('div');
+  card.className = 'doc-card';
+  const agents = (d.top_agents||[]).join(', ') || '—';
+  card.innerHTML = `
+    <div class="doc-head">
+      <div><strong>${d.filename}</strong>
+        <span class="muted"> · ${d.document_type||'?'} · ${(d.flagged_regions||[]).length} flagged region(s)</span></div>
+      <div><span class="pill ${d.band}">${d.band}</span>
+        <span style="margin-left:10px">${pct(d.fraud_score)}</span></div>
+    </div>`;
+  if (d.error) {
+    const e = document.createElement('div');
+    e.className = 'doc-body'; e.innerHTML = `<div class="muted">Skipped: ${d.error}</div>`;
+    card.appendChild(e); return card;
+  }
+  const body = document.createElement('div');
+  body.className = 'doc-body';
+
+  // Left: viewer
+  const viewer = document.createElement('div');
+  viewer.className = 'viewer';
+  const toggles = document.createElement('div');
+  toggles.className = 'toggles';
+  viewer.appendChild(toggles);
+  body.appendChild(viewer);
+
+  // Right: details (top agents, shap, findings)
+  const side = document.createElement('div');
+  side.innerHTML = `<div class="muted" style="margin-bottom:6px">Top contributing agents</div>`;
+  side.appendChild(renderShap(d.shap_top_agents||[]));
+  const findingsWrap = document.createElement('div');
+  findingsWrap.style.marginTop = '14px';
+  findingsWrap.innerHTML = `<div class="muted" style="margin-bottom:6px">Flagged findings</div>`;
+  side.appendChild(findingsWrap);
+  body.appendChild(side);
+  card.appendChild(body);
+
+  // Build agent toggle set
+  const agentsPresent = [...new Set((d.flagged_regions||[]).map(r => r.agent_id))];
+  const state = {};
+  agentsPresent.forEach(a => state[a] = true);
+
+  // Render each page canvas
+  const canvases = [];
+  (d.pages||[]).forEach(p => {
+    const wrap = document.createElement('div');
+    wrap.className = 'canvas-wrap';
+    wrap.style.marginBottom = '10px';
+    const canvas = document.createElement('canvas');
+    wrap.appendChild(canvas);
+    viewer.appendChild(wrap);
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      canvas._img = img; canvas._page = p.page;
+      drawCanvas(canvas, img, d.flagged_regions, p.page, state);
+    };
+    img.src = p.raster_url;
+    canvas.addEventListener('mousemove', ev => hover(ev, canvas, d.flagged_regions, p.page, state));
+    canvas.addEventListener('mouseleave', () => document.getElementById('tooltip').style.display='none');
+    canvas.addEventListener('click', ev => clickRegion(ev, canvas, d.flagged_regions, p.page, state, findingsWrap));
+    canvases.push(canvas);
+  });
+
+  // Toggle checkboxes
+  agentsPresent.forEach(a => {
+    const name = (d.flagged_regions.find(r=>r.agent_id===a)||{}).agent_name || a;
+    const lbl = document.createElement('label');
+    lbl.innerHTML = `<input type="checkbox" checked data-agent="${a}"> ${name}`;
+    lbl.querySelector('input').addEventListener('change', e => {
+      state[a] = e.target.checked;
+      canvases.forEach(c => drawCanvas(c, c._img, d.flagged_regions, c._page, state));
+    });
+    toggles.appendChild(lbl);
+  });
+  if (!agentsPresent.length) toggles.innerHTML = '<span class="muted">No flagged regions on this document.</span>';
+
+  // Findings list
+  renderFindings(findingsWrap, d.flagged_regions||[]);
+  return card;
+}
+
+function drawCanvas(canvas, img, regions, page, state) {
+  if (!img) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(img, 0, 0);
+  (regions||[]).filter(r => r.page===page && state[r.agent_id]).forEach(r => {
+    const [x0,y0,x1,y1] = r.bbox;
+    const c = colorFor(r.confidence);
+    ctx.fillStyle = c.f; ctx.strokeStyle = c.b; ctx.lineWidth = Math.max(2, canvas.width/400);
+    ctx.fillRect(x0,y0,x1-x0,y1-y0);
+    ctx.strokeRect(x0,y0,x1-x0,y1-y0);
+  });
+}
+
+function canvasCoords(ev, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+  return { x: (ev.clientX-rect.left)*sx, y: (ev.clientY-rect.top)*sy };
+}
+function hit(regions, page, state, x, y) {
+  return (regions||[]).filter(r=>r.page===page && state[r.agent_id])
+    .find(r => { const [a,b,c,d]=r.bbox; return x>=a&&x<=c&&y>=b&&y<=d; });
+}
+function hover(ev, canvas, regions, page, state) {
+  const {x,y} = canvasCoords(ev, canvas);
+  const r = hit(regions, page, state, x, y);
+  const tip = document.getElementById('tooltip');
+  if (r) {
+    tip.style.display='block'; tip.style.left=(ev.clientX+14)+'px'; tip.style.top=(ev.clientY+14)+'px';
+    tip.innerHTML = `<strong>${r.agent_name}</strong> · conf ${r.confidence}<br>${r.reason||''}`;
+  } else tip.style.display='none';
+}
+function clickRegion(ev, canvas, regions, page, state, findingsWrap) {
+  const {x,y} = canvasCoords(ev, canvas);
+  const r = hit(regions, page, state, x, y);
+  if (!r) return;
+  const idx = regions.indexOf(r);
+  const el = findingsWrap.querySelector(`[data-fidx="${idx}"]`);
+  if (el) { findingsWrap.querySelectorAll('.finding').forEach(f=>f.classList.remove('sel'));
+    el.classList.add('sel'); el.scrollIntoView({block:'nearest', behavior:'smooth'}); }
+}
+function renderFindings(wrap, regions) {
+  if (!regions.length) { wrap.innerHTML += '<div class="muted">None.</div>'; return; }
+  regions.forEach((r, i) => {
+    const c = colorFor(r.confidence);
+    const div = document.createElement('div');
+    div.className = 'finding'; div.dataset.fidx = i;
+    div.style.borderLeftColor = c.b;
+    div.innerHTML = `<strong>${r.agent_name}</strong> · p${r.page} · conf ${r.confidence}<br>
+      <span class="muted">${r.reason||''}</span>`;
+    wrap.appendChild(div);
+  });
+}
+function renderShap(top) {
+  const div = document.createElement('div');
+  if (!top.length) { div.innerHTML='<span class="muted">n/a</span>'; return div; }
+  const max = Math.max(...top.map(t=>Math.abs(t.contribution)), 0.0001);
+  top.forEach(t => {
+    const row = document.createElement('div');
+    row.className='shap-row';
+    const w = Math.max(2, Math.abs(t.contribution)/max*100);
+    row.innerHTML = `<div title="${t.agent_id}">${t.agent_name}</div>
+      <div class="shap-bar" style="width:${w}%"></div>
+      <div style="text-align:right">${t.contribution.toFixed(3)}</div>`;
+    div.appendChild(row);
+  });
+  return div;
+}
+function renderContradictions(list) {
+  const wrap = document.getElementById('contradictions');
+  if (!list.length) { wrap.innerHTML = '<div class="muted">No inter-document contradictions found.</div>'; return; }
+  let html = `<table><thead><tr><th>Type</th><th>Documents</th><th>Quote A</th><th>Quote B</th><th>Conf</th><th>Explanation</th></tr></thead><tbody>`;
+  list.forEach(c => {
+    html += `<tr><td>${c.contradiction_type||''}</td>
+      <td>${(c.documents_involved||[]).join('<br>')}</td>
+      <td>${c.doc1_quote||''}</td><td>${c.doc2_quote||''}</td>
+      <td>${c.confidence!=null?c.confidence:''}</td>
+      <td>${c.explanation||''}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+</script>
+</body>
+</html>

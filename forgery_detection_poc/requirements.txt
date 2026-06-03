@@ -1,0 +1,52 @@
+# --- Core web / pipeline (required) ---
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+python-dotenv
+requests
+
+# --- Document / image processing (required) ---
+pymupdf
+pillow
+opencv-python-headless
+numpy<2
+scipy
+scikit-image
+pdfminer.six
+
+# --- OCR (required: tesseract; optional: paddleocr/azure) ---
+pytesseract
+
+# --- Forensic / similarity (required) ---
+imagehash
+datasketch
+faiss-cpu
+
+# --- NLP (required) ---
+spacy
+symspellpy
+
+# --- Barcode (required; needs system libzbar0) ---
+pyzbar
+
+# --- ML / calibration / explainability (required) ---
+scikit-learn
+lightgbm
+shap
+
+# --- Synthetic test doc generation (dry run) ---
+fpdf2
+
+# --- Optional heavy deep-learning models (graceful degradation if absent) ---
+# Install separately; large downloads / better with GPU.
+# torch
+# transformers
+# timm
+# paddleocr
+# paddlepaddle
+
+# --- Optional external LLM / cloud OCR (graceful degradation if key absent) ---
+# openai
+# anthropic
+# azure-ai-documentintelligence
