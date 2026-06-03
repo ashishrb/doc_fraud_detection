@@ -13,21 +13,10 @@ from typing import Any
 import numpy as np
 
 import config
+from pipeline.template_store import get_template_store
 from pipeline.utils import heatmap_to_bboxes, load_page_image, safe_agent
 
 AGENT_ID = "agent_4"
-
-
-def _templates_for(doc_type: str) -> list[Path]:
-    paths: list[Path] = []
-    tdir = config.TEMPLATES_DIR / doc_type
-    if tdir.is_dir():
-        paths += sorted(tdir.glob("*.png")) + sorted(tdir.glob("*.jpg"))
-    if not paths:  # fall back to any template
-        for d in sorted(config.TEMPLATES_DIR.glob("*")):
-            if d.is_dir():
-                paths += sorted(d.glob("*.png")) + sorted(d.glob("*.jpg"))
-    return paths
 
 
 @safe_agent(AGENT_ID)
@@ -36,7 +25,9 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
     from skimage.metrics import structural_similarity as ssim
 
     doc_type = ctx.get("classified_type", ctx.get("doc_type", "other"))
-    templates = _templates_for(doc_type)
+    # TemplateStore hides the source (local dir or Azure Blob); switching is a
+    # config-only change via TEMPLATE_SOURCE.
+    templates = get_template_store().get_templates(doc_type)
     if not templates:
         return {"score": 0.0, "flagged": False, "flagged_regions": [],
                 "detail": f"no authentic templates available for '{doc_type}'"}

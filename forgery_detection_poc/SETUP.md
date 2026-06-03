@@ -76,6 +76,9 @@ Copy `.env.example` to `.env` and fill in what you have. **All keys are optional
 | `OPENAI_API_KEY` | optional | Step 5 cross-document LLM reasoning | platform.openai.com → API keys |
 | `ANTHROPIC_API_KEY` | optional | Step 5 (alternative to OpenAI) | console.anthropic.com → API keys |
 | `CROSS_DOC_MODEL` | optional | LLM model id for Step 5 (`gpt-4-turbo`, `gpt-4o`, `claude-opus-4-6`, …) | n/a (default `gpt-4-turbo`) |
+| `TEMPLATE_SOURCE` | optional | `local` (default) reads `templates/`; `azure_blob` fetches authentic templates from Blob Storage (Agent 4 + Step 3 OOD) | set to `azure_blob` + provide the connection string below |
+| `AZURE_BLOB_CONNECTION_STRING` | optional | Blob account used when `TEMPLATE_SOURCE=azure_blob` | Azure Portal → Storage account → *Access keys* → Connection string |
+| `AZURE_BLOB_TEMPLATE_CONTAINER` | optional | Blob container holding `<doc_type>/<file>` templates (default `authentic-templates`) | name of your container |
 | `ENABLE_PADDLEOCR` | optional | `1` activates 2nd OCR engine → Agent 10 | set after `paddleocr`/`paddlepaddle` installed and weights reachable |
 | `RASTER_DPI` | optional | raster DPI; **all bboxes are in px at this DPI** (default 150) | n/a |
 | `OOD_THRESHOLD` | optional | Step 3 FAISS out-of-distribution distance (1.5) | n/a |
@@ -125,6 +128,40 @@ button.
 API: `POST /analyze` (multipart: `files`, `candidate_id`, `doc_types`) →
 verdict JSON. `GET /raster/{doc_id}/{page}` serves the 150-DPI page raster used
 by the canvas overlay. `GET /health` is a liveness probe.
+
+---
+
+## 5a. Operator Tools (manual — not run by the pipeline)
+
+Two standalone scripts ingest an authentic-document corpus to improve detection
+once one is available. **Neither runs automatically.** Both accept
+`--source local` (reads `templates/`) or `--source azure_blob` (reads the Blob
+container from `AZURE_BLOB_CONNECTION_STRING` + `AZURE_BLOB_TEMPLATE_CONTAINER`,
+organised as `<container>/<doc_type>/<file>`).
+
+```bash
+# Ingest authentic templates into the Step-3 OOD FAISS index (incremental:
+# re-running only adds files not already indexed). Improves Agent 4 + Step 3.
+python scripts/index_templates.py --source local
+python scripts/index_templates.py --source azure_blob
+
+# Re-train Agent 9 (novelty) on the authentic corpus; writes
+# models/agent9_weights/patchcore_pca.npz, which Agent 9 auto-loads next run.
+python scripts/finetune_agent9.py --source azure_blob
+```
+
+Templates and templates/Agent-4 access go through the **TemplateStore**
+abstraction (`pipeline/template_store.py`); the Step-3 OOD index is the
+persisted **TemplateEmbeddingIndex** (`pipeline/template_embedding_index.py`).
+Switching from local to Azure Blob is a **config-only** change
+(`TEMPLATE_SOURCE=azure_blob` + connection string) — no code edits.
+
+> **Note on `finetune_agent9.py` with placeholder templates:** the POC ships
+> only synthetic placeholder templates, which are *not* representative of real
+> documents. Fine-tuning Agent 9 on them makes the global model over-flag
+> ordinary documents, so the POC default ships **no** Agent-9 weights and uses
+> the per-document fallback detector. Run `finetune_agent9.py` only once a real
+> authentic corpus is available.
 
 ---
 

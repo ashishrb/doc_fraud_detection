@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 import config
-from pipeline.utils import heatmap_to_bboxes, load_page_image, safe_agent
+from pipeline.utils import heatmap_to_bboxes, load_page_image, logger, safe_agent
 
 AGENT_ID = "agent_9"
 _PATCH = 32
@@ -46,11 +46,51 @@ def _robust_z(err: np.ndarray) -> np.ndarray:
     return (err - med) / (1.4826 * mad)
 
 
+# --------------------- global (fine-tuned) model --------------------- #
+_GLOBAL_MODEL: dict[str, Any] | None = None
+_GLOBAL_TRIED = False
+_WEIGHTS_FILE = "patchcore_pca.npz"
+
+
+def _load_global_model() -> dict[str, Any] | None:
+    """Load fine-tuned authentic-corpus weights if scripts/finetune_agent9.py
+    has produced them; otherwise None (per-document fallback is used)."""
+    global _GLOBAL_MODEL, _GLOBAL_TRIED
+    if _GLOBAL_TRIED:
+        return _GLOBAL_MODEL
+    _GLOBAL_TRIED = True
+    wpath = config.AGENT9_WEIGHTS_DIR / _WEIGHTS_FILE
+    if wpath.exists():
+        try:
+            d = np.load(wpath)
+            _GLOBAL_MODEL = {
+                "components": d["components"].astype(np.float32),
+                "mean": d["mean"].astype(np.float32),
+                "err_median": float(d["err_median"]),
+                "err_mad": float(d["err_mad"]),
+            }
+            logger.info("Agent 9: loaded fine-tuned weights from %s "
+                        "(%d components)", wpath,
+                        _GLOBAL_MODEL["components"].shape[0])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Agent 9: failed to load weights %s: %s", wpath, exc)
+            _GLOBAL_MODEL = None
+    return _GLOBAL_MODEL
+
+
+def _recon_err(vecs: np.ndarray, components: np.ndarray,
+               mean: np.ndarray) -> np.ndarray:
+    centered = vecs - mean
+    recon = centered @ components.T @ components + mean
+    return np.mean((vecs - recon) ** 2, axis=1)
+
+
 @safe_agent(AGENT_ID)
 def run(ctx: dict[str, Any]) -> dict[str, Any]:
     import cv2
     from sklearn.decomposition import PCA
 
+    model = _load_global_model()
     regions: list[dict[str, Any]] = []
     page_scores: list[float] = []
 
@@ -70,12 +110,19 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
             continue
         cvecs = vecs[content]
         ccoords = [c for c, keep in zip(coords, content) if keep]
-        n_comp = int(min(32, cvecs.shape[1], max(2, cvecs.shape[0] - 1)))
-        pca = PCA(n_components=n_comp).fit(cvecs)
-        recon = pca.inverse_transform(pca.transform(cvecs))
-        err = np.mean((cvecs - recon) ** 2, axis=1)
-        z = _robust_z(err)
-        coords, vecs = ccoords, cvecs
+
+        if model is not None:
+            # Score against the fine-tuned authentic distribution.
+            err = _recon_err(cvecs, model["components"], model["mean"])
+            z = (err - model["err_median"]) / (1.4826 * model["err_mad"] + 1e-6)
+        else:
+            # Per-document fallback (no labelled corpus): fit PCA on this page.
+            n_comp = int(min(32, cvecs.shape[1], max(2, cvecs.shape[0] - 1)))
+            pca = PCA(n_components=n_comp).fit(cvecs)
+            recon = pca.inverse_transform(pca.transform(cvecs))
+            err = np.mean((cvecs - recon) ** 2, axis=1)
+            z = _robust_z(err)
+        coords = ccoords
         max_z = float(z.max()) if len(z) else 0.0
         # sigmoid centred at the flag threshold -> ~0 for ordinary variation.
         page_scores.append(1.0 / (1.0 + np.exp(-(max_z - _Z_FLAG) / 1.5)))
@@ -93,9 +140,11 @@ def run(ctx: dict[str, Any]) -> dict[str, Any]:
                                 "confidence": 0.6})
 
     score = float(max(page_scores)) if page_scores else 0.0
+    backend = "fine-tuned global PCA" if model is not None \
+        else "per-document PCA"
     return {
         "score": round(score, 3),
         "flagged": score >= config.AGENT9_THRESHOLD and bool(regions),
         "flagged_regions": regions,
-        "detail": f"per-document PCA novelty detector; max anomaly={score:.3f}",
+        "detail": f"{backend} novelty detector; max anomaly={score:.3f}",
     }

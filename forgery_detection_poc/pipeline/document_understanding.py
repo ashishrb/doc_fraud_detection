@@ -133,54 +133,28 @@ def _l2(v: np.ndarray) -> np.ndarray:
 _EMBEDDER = _Embedder()
 
 
+def get_embedder() -> _Embedder:
+    """Process-singleton document embedder (DiT or deterministic fallback)."""
+    return _EMBEDDER
+
+
 # ----------------------------- FAISS OOD ----------------------------- #
-class TemplateIndex:
-    """Small FAISS index of authentic template embeddings for OOD detection."""
-
-    def __init__(self) -> None:
-        self.index = None
-        self.meta: list[dict[str, Any]] = []
-        self._build()
-
-    def _build(self) -> None:
-        import faiss
-
-        self.index = faiss.IndexFlatL2(EMBED_DIM)
-        seeded = 0
-        for tdir in sorted(config.TEMPLATES_DIR.glob("*")):
-            if tdir.is_dir():
-                for img_path in sorted(tdir.glob("*.png")) + \
-                        sorted(tdir.glob("*.jpg")):
-                    self._add(img_path, tdir.name)
-                    seeded += 1
-            elif tdir.suffix.lower() in (".png", ".jpg", ".jpeg"):
-                self._add(tdir, "generic")
-                seeded += 1
-        logger.info("FAISS template index seeded with %d authentic embeddings",
-                    seeded)
-
-    def _add(self, img_path: Path, doc_type: str) -> None:
-        try:
-            vec = _EMBEDDER.embed(str(img_path))
-            self.index.add(vec.reshape(1, -1))
-            self.meta.append({"path": str(img_path), "doc_type": doc_type})
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to index template %s: %s", img_path, exc)
-
-    def nearest_distance(self, vec: np.ndarray) -> tuple[float, dict | None]:
-        if self.index is None or self.index.ntotal == 0:
-            return float("inf"), None
-        D, indices = self.index.search(vec.reshape(1, -1), 1)
-        return float(D[0][0]), self.meta[int(indices[0][0])]
+# The OOD index lives in pipeline/template_embedding_index.py (persisted FAISS
+# wrapper). Here we hold a process-singleton seeded from the TemplateStore on
+# first use, so the heavy embedder is owned by this module.
+_TEMPLATE_INDEX = None
 
 
-_TEMPLATE_INDEX: TemplateIndex | None = None
-
-
-def get_template_index() -> TemplateIndex:
+def get_template_index():
+    """Return the persisted TemplateEmbeddingIndex, seeding it if empty."""
     global _TEMPLATE_INDEX
     if _TEMPLATE_INDEX is None:
-        _TEMPLATE_INDEX = TemplateIndex()
+        from pipeline.template_embedding_index import TemplateEmbeddingIndex
+
+        idx = TemplateEmbeddingIndex(embed_fn=_EMBEDDER.embed, dim=EMBED_DIM)
+        if idx.count == 0:  # first run: seed from local/azure templates
+            idx.seed_from_templates()
+        _TEMPLATE_INDEX = idx
     return _TEMPLATE_INDEX
 
 

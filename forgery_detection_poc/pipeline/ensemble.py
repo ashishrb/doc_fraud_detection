@@ -32,7 +32,30 @@ AGENTS: list[Callable[[dict], dict]] = [
 ]
 
 
+_WARMED_UP = False
+
+
+def _warm_up_lazy_imports() -> None:
+    """Trigger thread-unsafe lazy imports once on the main thread.
+
+    sklearn/scipy.stats perform lazy submodule imports that can fail with
+    "Module 'scipy' has no attribute '_lib'" when first imported concurrently
+    from multiple worker threads (e.g. Agent 9's PCA + SHAP racing). Importing
+    them once here, before the ThreadPoolExecutor, makes the agents thread-safe.
+    """
+    global _WARMED_UP
+    if _WARMED_UP:
+        return
+    try:
+        import scipy.stats  # noqa: F401
+        import sklearn.decomposition  # noqa: F401
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("lazy-import warm-up failed: %s", exc)
+    _WARMED_UP = True
+
+
 def run_agents(ctx: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    _warm_up_lazy_imports()
     findings: dict[str, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=len(AGENTS)) as ex:
         futures = {ex.submit(fn, ctx): fn for fn in AGENTS}

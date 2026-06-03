@@ -50,3 +50,7 @@ fpdf2
 # openai
 # anthropic
 # azure-ai-documentintelligence
+
+# --- Optional Azure Blob template corpus (TEMPLATE_SOURCE=azure_blob) ---
+# Lazy-imported; only needed when fetching authentic templates from Blob Storage.
+# azure-storage-blob

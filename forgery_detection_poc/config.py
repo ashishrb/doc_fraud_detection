@@ -18,15 +18,35 @@ ADVERSARIAL_DIR = BASE_DIR / "adversarial_patterns"
 MODELS_DIR = BASE_DIR / "models"
 FAISS_DIR = BASE_DIR / "faiss_index"
 STATIC_DIR = BASE_DIR / "static"
+TEMPLATE_CACHE_DIR = TEMPLATES_DIR / "cache"  # azure_blob downloads cached here
 
 for _d in (UPLOADS_DIR, TEMPLATES_DIR, ADVERSARIAL_DIR, MODELS_DIR, FAISS_DIR, STATIC_DIR):
     _d.mkdir(parents=True, exist_ok=True)
+
+# Persisted Step-3 OOD FAISS index + sidecar metadata (Agent 4 / Step 3).
+TEMPLATE_INDEX_PATH = FAISS_DIR / "template_embeddings.index"
+TEMPLATE_INDEX_META_PATH = FAISS_DIR / "template_embeddings.meta.json"
+# Agent 9 saved (fine-tuned) weights, produced by scripts/finetune_agent9.py.
+AGENT9_WEIGHTS_DIR = MODELS_DIR / "agent9_weights"
 
 # --- External API Keys ---
 AZURE_DOC_INTELLIGENCE_ENDPOINT = os.getenv("AZURE_DOC_INTELLIGENCE_ENDPOINT", "")
 AZURE_DOC_INTELLIGENCE_KEY = os.getenv("AZURE_DOC_INTELLIGENCE_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+# --- Azure Blob Storage (future: authentic template corpus) ---
+# Templates organised inside the container as: <doc_type>/<filename>
+# e.g. payslip/cognizant_payslip_v1.pdf
+AZURE_BLOB_CONNECTION_STRING = os.getenv("AZURE_BLOB_CONNECTION_STRING", "")
+AZURE_BLOB_TEMPLATE_CONTAINER = os.getenv(
+    "AZURE_BLOB_TEMPLATE_CONTAINER", "authentic-templates")
+
+# --- Template & OOD index source ---
+# "local"      -> use the templates/ directory (POC default, no Azure dependency)
+# "azure_blob" -> fetch from the Blob container above (future; flip this switch
+#                 and provide AZURE_BLOB_CONNECTION_STRING, no code changes)
+TEMPLATE_SOURCE = os.getenv("TEMPLATE_SOURCE", "local")
 
 # --- Model Selection ---
 CROSS_DOC_MODEL = os.getenv("CROSS_DOC_MODEL", "gpt-4-turbo")  # or claude-opus-4-6
