@@ -17,8 +17,8 @@ Project lives under [`forgery_detection_poc/`](forgery_detection_poc/).
    against a FAISS **TemplateEmbeddingIndex** for out-of-distribution (OOD) detection.
 4. **Specialist agent ensemble** — 11 mandatory agents run in parallel
    (`ThreadPoolExecutor`); each returns scored, bbox-tagged findings.
-5. **Cross-document LLM reasoning** — inter-document contradictions (LLM, with a
-   rule-based fallback).
+5. **Cross-document LLM reasoning** — inter-document contradictions; backend
+   preference Azure OpenAI (Azure AI Foundry) → OpenAI → Anthropic → rule-based fallback.
 6. **Meta-learner** — weighted ensemble + SHAP attribution + band assignment.
 7. **Verdict & routing** — escalation rules → final verdict JSON.
 8. **HTML UI** — FastAPI `/analyze`; canvas overlays with colour-coded fraud boxes.

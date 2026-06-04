@@ -35,6 +35,14 @@ AZURE_DOC_INTELLIGENCE_KEY = os.getenv("AZURE_DOC_INTELLIGENCE_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
+# --- Azure OpenAI (Azure AI Foundry) for Step 5 cross-doc reasoning ---
+# Preferred LLM backend. When all four are set, cross_doc_llm uses the
+# AzureOpenAI client (deployment-based) ahead of plain OpenAI / Anthropic.
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "")          # https://<resource>.openai.azure.com/
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")      # deployment name, e.g. gpt-4o
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-06-01")
+
 # --- Azure Blob Storage (future: authentic template corpus) ---
 # Templates organised inside the container as: <doc_type>/<filename>
 # e.g. payslip/cognizant_payslip_v1.pdf

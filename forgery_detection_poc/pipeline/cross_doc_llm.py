@@ -1,9 +1,10 @@
 """Step 5 - Cross-Document LLM Reasoning.
 
 Bundles extracted text + field JSONs from all of a candidate's documents and
-asks an LLM (OpenAI or Anthropic) to enumerate inter-document contradictions.
-When no API key/SDK is available, a deterministic rule-based fallback produces
-the same contradiction schema so the pipeline still surfaces cross-doc fraud.
+asks an LLM to enumerate inter-document contradictions. Backend preference:
+Azure OpenAI (Azure AI Foundry) -> OpenAI -> Anthropic. When no API key/SDK is
+available, a deterministic rule-based fallback produces the same contradiction
+schema so the pipeline still surfaces cross-doc fraud.
 """
 from __future__ import annotations
 
@@ -38,6 +39,29 @@ def _build_user_payload(docs: list[dict[str, Any]]) -> str:
             "text_excerpt": (d.get("text", "") or "")[:3000],
         })
     return json.dumps(bundle, indent=2)
+
+
+def _azure_openai_configured() -> bool:
+    return bool(config.AZURE_OPENAI_ENDPOINT and config.AZURE_OPENAI_API_KEY
+                and config.AZURE_OPENAI_DEPLOYMENT)
+
+
+def _call_azure_openai(payload: str) -> list[dict[str, Any]]:
+    from openai import AzureOpenAI
+
+    client = AzureOpenAI(
+        azure_endpoint=config.AZURE_OPENAI_ENDPOINT,
+        api_key=config.AZURE_OPENAI_API_KEY,
+        api_version=config.AZURE_OPENAI_API_VERSION,
+    )
+    # On Azure OpenAI the model is addressed by the deployment name.
+    resp = client.chat.completions.create(
+        model=config.AZURE_OPENAI_DEPLOYMENT,
+        temperature=0.1,
+        messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                  {"role": "user", "content": payload}],
+    )
+    return _parse_json_array(resp.choices[0].message.content)
 
 
 def _call_openai(payload: str) -> list[dict[str, Any]]:
@@ -129,7 +153,10 @@ def analyze_cross_document(docs: list[dict[str, Any]]) -> dict[str, Any]:
     contradictions: list[dict[str, Any]] = []
 
     try:
-        if config.OPENAI_API_KEY:
+        if _azure_openai_configured():
+            contradictions = _call_azure_openai(payload)
+            backend = f"azure_openai:{config.AZURE_OPENAI_DEPLOYMENT}"
+        elif config.OPENAI_API_KEY:
             contradictions = _call_openai(payload)
             backend = f"openai:{config.CROSS_DOC_MODEL}"
         elif config.ANTHROPIC_API_KEY:

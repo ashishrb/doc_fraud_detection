@@ -76,19 +76,30 @@ All keys are read from env vars via `config.py` (template in `.env.example`). Se
 and run — no code changes needed. Working dir: `forgery_detection_poc/`.
 
 ### 3a. LLM cross-document reasoning (replaces rule-based fallback)
-Provide **one** of:
+Backend preference: **Azure OpenAI → OpenAI → Anthropic → rule-based fallback.**
+
+Preferred — **Azure OpenAI (Azure AI Foundry)**, set all four:
 ```bash
-export OPENAI_API_KEY="sk-..."            # default model gpt-4-turbo
+export AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com/"
+export AZURE_OPENAI_API_KEY="<key>"
+export AZURE_OPENAI_DEPLOYMENT="gpt-4o"        # your deployment name (model = deployment)
+export AZURE_OPENAI_API_VERSION="2024-06-01"   # optional, this is the default
+```
+Or a fallback provider (pick one):
+```bash
+export OPENAI_API_KEY="sk-..."                 # default model gpt-4-turbo
 # or
 export ANTHROPIC_API_KEY="sk-ant-..."
-export CROSS_DOC_MODEL="claude-opus-4-..."  # only if using Anthropic
+export CROSS_DOC_MODEL="claude-opus-4-..."     # only for Anthropic/plain OpenAI
 ```
 Verify (uses the existing clean+forged pair):
 ```bash
 python dry_run.py
-# expect in output:  cross-doc [openai:gpt-4-turbo]  (NOT rule_based_fallback)
+# expect:  cross-doc [azure_openai:gpt-4o]   (NOT rule_based_fallback)
 ```
-Backend selection logic: `pipeline/cross_doc_llm.py:131-143` (OpenAI → Anthropic → fallback).
+Backend selection logic: `pipeline/cross_doc_llm.py` `analyze_cross_document()`
+(Azure OpenAI → OpenAI → Anthropic → fallback). Azure OpenAI requires the
+`openai` package (provides the `AzureOpenAI` client).
 
 ### 3b. Azure Document Intelligence (high-accuracy OCR/layout — also helps A10)
 Both required together:
@@ -143,7 +154,9 @@ switch from "unavailable, using fallback" to the real backend.
 
 ```bash
 cd forgery_detection_poc
-export OPENAI_API_KEY=...            # or ANTHROPIC_API_KEY (+CROSS_DOC_MODEL)
+# Preferred LLM: Azure OpenAI (Azure AI Foundry)
+export AZURE_OPENAI_ENDPOINT=...   AZURE_OPENAI_API_KEY=...   AZURE_OPENAI_DEPLOYMENT=gpt-4o
+# (or fallback) export OPENAI_API_KEY=...   # or ANTHROPIC_API_KEY (+CROSS_DOC_MODEL)
 export AZURE_DOC_INTELLIGENCE_ENDPOINT=...   AZURE_DOC_INTELLIGENCE_KEY=...
 export ENABLE_PADDLEOCR=1
 python test_matrix.py                # re-confirms A1-A9, A11 + now A10
@@ -154,5 +167,6 @@ export TEMPLATE_SOURCE=azure_blob AZURE_BLOB_CONNECTION_STRING=... AZURE_BLOB_TE
 python scripts/index_templates.py --source azure_blob
 python scripts/finetune_agent9.py --source azure_blob
 ```
-Expected after keys: **11/11 agents fire**, cross-doc backend = `openai:...`/`anthropic:...`,
+Expected after keys: **11/11 agents fire**, cross-doc backend =
+`azure_openai:<deployment>` (or `openai:...`/`anthropic:...`),
 `ocr_engines_available` includes `tesseract`+`paddleocr`(+`azure`).

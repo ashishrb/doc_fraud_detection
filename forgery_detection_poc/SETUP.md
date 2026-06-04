@@ -73,9 +73,13 @@ Copy `.env.example` to `.env` and fill in what you have. **All keys are optional
 |----------|-----------|----------|---------------|
 | `AZURE_DOC_INTELLIGENCE_ENDPOINT` | optional | Step 2 primary (layout-aware) OCR | Azure Portal → create "Document Intelligence" resource → *Keys & Endpoint* |
 | `AZURE_DOC_INTELLIGENCE_KEY` | optional | as above | as above |
-| `OPENAI_API_KEY` | optional | Step 5 cross-document LLM reasoning | platform.openai.com → API keys |
-| `ANTHROPIC_API_KEY` | optional | Step 5 (alternative to OpenAI) | console.anthropic.com → API keys |
-| `CROSS_DOC_MODEL` | optional | LLM model id for Step 5 (`gpt-4-turbo`, `gpt-4o`, `claude-opus-4-6`, …) | n/a (default `gpt-4-turbo`) |
+| `AZURE_OPENAI_ENDPOINT` | optional | **Preferred** Step 5 LLM backend (Azure OpenAI / AI Foundry); resource endpoint `https://<resource>.openai.azure.com/` | Azure AI Foundry / Portal → Azure OpenAI resource → *Keys & Endpoint* |
+| `AZURE_OPENAI_API_KEY` | optional | Azure OpenAI key (set with endpoint + deployment to enable) | as above |
+| `AZURE_OPENAI_DEPLOYMENT` | optional | Azure OpenAI **deployment name** (the model is addressed by deployment, e.g. `gpt-4o`) | Azure AI Foundry → Deployments |
+| `AZURE_OPENAI_API_VERSION` | optional | Azure OpenAI REST API version (default `2024-06-01`) | n/a |
+| `OPENAI_API_KEY` | optional | Step 5 fallback LLM (plain OpenAI) | platform.openai.com → API keys |
+| `ANTHROPIC_API_KEY` | optional | Step 5 fallback LLM (Anthropic) | console.anthropic.com → API keys |
+| `CROSS_DOC_MODEL` | optional | model id for **plain OpenAI / Anthropic only** (`gpt-4-turbo`, `claude-opus-4-6`, …); ignored for Azure OpenAI (uses deployment) | n/a (default `gpt-4-turbo`) |
 | `TEMPLATE_SOURCE` | optional | `local` (default) reads `templates/`; `azure_blob` fetches authentic templates from Blob Storage (Agent 4 + Step 3 OOD) | set to `azure_blob` + provide the connection string below |
 | `AZURE_BLOB_CONNECTION_STRING` | optional | Blob account used when `TEMPLATE_SOURCE=azure_blob` | Azure Portal → Storage account → *Access keys* → Connection string |
 | `AZURE_BLOB_TEMPLATE_CONTAINER` | optional | Blob container holding `<doc_type>/<file>` templates (default `authentic-templates`) | name of your container |
@@ -230,7 +234,7 @@ packages** installed. Realised behaviour:
 | Agent 11 — Adversarial | **active** (5 perturbations re-run ELA) | — |
 | Step 2 OCR | **Tesseract only** | Azure DI key absent; PaddleOCR disabled (see Agent 10) |
 | Step 3 LayoutLMv3 / Donut / DiT | **fallback** | `torch`/`transformers`/`timm` not installed → deterministic 768-d embedding + regex/OCR field extraction; FAISS OOD still runs |
-| Step 5 Cross-document LLM | **rule-based fallback** | no `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`; deterministic contradiction rules used (still detected `designation_mismatch`) |
+| Step 5 Cross-document LLM | **rule-based fallback** | no Azure OpenAI (`AZURE_OPENAI_*`) / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`; deterministic contradiction rules used (still detected `designation_mismatch`). Backend preference: Azure OpenAI → OpenAI → Anthropic → rule-based |
 | Step 6 calibration | **raw weighted score** | isotonic calibration needs >50 labelled examples in `models/labels.json` |
 
 Nothing in the list crashes the pipeline — each is an explicit graceful-

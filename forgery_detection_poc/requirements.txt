@@ -47,7 +47,7 @@ fpdf2
 # paddlepaddle
 
 # --- Optional external LLM / cloud OCR (graceful degradation if key absent) ---
-# openai
+# openai            # also provides AzureOpenAI client (Azure AI Foundry, Step 5)
 # anthropic
 # azure-ai-documentintelligence
 
