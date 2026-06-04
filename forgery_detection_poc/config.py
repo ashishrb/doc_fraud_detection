@@ -32,7 +32,6 @@ AGENT9_WEIGHTS_DIR = MODELS_DIR / "agent9_weights"
 # --- External API Keys ---
 AZURE_DOC_INTELLIGENCE_ENDPOINT = os.getenv("AZURE_DOC_INTELLIGENCE_ENDPOINT", "")
 AZURE_DOC_INTELLIGENCE_KEY = os.getenv("AZURE_DOC_INTELLIGENCE_KEY", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 # --- Azure OpenAI (Azure AI Foundry) for Step 5 cross-doc reasoning ---
@@ -56,8 +55,7 @@ AZURE_BLOB_TEMPLATE_CONTAINER = os.getenv(
 #                 and provide AZURE_BLOB_CONNECTION_STRING, no code changes)
 TEMPLATE_SOURCE = os.getenv("TEMPLATE_SOURCE", "local")
 
-# --- Model Selection ---
-CROSS_DOC_MODEL = os.getenv("CROSS_DOC_MODEL", "gpt-4-turbo")  # or claude-opus-4-6
+# CROSS_DOC_MODEL removed — Step 5 uses AZURE_OPENAI_DEPLOYMENT (Azure only).
 
 # Agent 15 (VLLM field extraction) descoped.
 # Claude Opus (Agents 13 + 14) covers the LLM reasoning layer.
@@ -134,6 +132,8 @@ AGENT_NAMES = {
     "agent_9": "Novel Fraud",
     "agent_10": "Cross-OCR Disagreement",
     "agent_11": "Adversarial Robustness",
+    "agent_13": "Holistic Plausibility",
+    "agent_14": "Cross-Agent Adjudicator",
 }
 
 # Known PDF editor producer/creator strings (Agent 1). Extend as needed.

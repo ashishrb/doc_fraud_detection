@@ -56,7 +56,8 @@ def _escalation_rules(ctx: dict[str, Any], meta: dict[str, Any]) -> dict[str, An
     # Rule 2 - disagreement with ensemble
     ens = meta["fraud_score"]
     strong_disagree = [aid for aid, f in findings.items()
-                       if abs(f.get("score", 0.0) - ens)
+                       if "error" not in f
+                       and abs(f.get("score", 0.0) - ens)
                        > config.RULE2_DISAGREEMENT_DELTA]
     flags["disagreeing_agents"] = strong_disagree
     flags["disagreement_override"] = len(strong_disagree) >= config.RULE2_MIN_AGENTS
