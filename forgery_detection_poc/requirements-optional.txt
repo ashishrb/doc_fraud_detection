@@ -1,0 +1,8 @@
+# ── Optional: Agent 9 upgrade to PatchCore / DRAEM ──────────────
+# Install ONLY if upgrading Agent 9 from PCA autoencoder to PatchCore/DRAEM.
+# Requires a GPU with CUDA. Not needed for the current POC build.
+# Usage: pip install -r requirements-optional.txt
+# Then set AGENT9_BACKEND=patchcore in .env and re-run scripts/finetune_agent9.py
+torch==2.12.0
+torchvision==0.27.0
+anomalib==2.5.0

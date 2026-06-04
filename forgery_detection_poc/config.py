@@ -58,7 +58,26 @@ TEMPLATE_SOURCE = os.getenv("TEMPLATE_SOURCE", "local")
 
 # --- Model Selection ---
 CROSS_DOC_MODEL = os.getenv("CROSS_DOC_MODEL", "gpt-4-turbo")  # or claude-opus-4-6
-AGENT15_MODEL = os.getenv("AGENT15_MODEL", "")  # Optional VLLM extraction model
+
+# Agent 15 (VLLM field extraction) descoped.
+# Claude Opus (Agents 13 + 14) covers the LLM reasoning layer.
+# Revisit only if a 4-way OCR consensus signal is needed in future.
+
+# --- Agent 13 (Claude Holistic Plausibility) ---
+AGENT13_MODEL = os.getenv("AGENT13_MODEL", "claude-opus-4-6")
+
+# --- Agent 14 (Claude Cross-Agent Adjudicator) ---
+AGENT14_MODEL = os.getenv("AGENT14_MODEL", "claude-opus-4-6")
+
+# --- Agent 9 backend selector ---
+# "pca_autoencoder" = current approved fallback (no GPU required)
+# "patchcore"       = upgrade path (requires anomalib + GPU, see requirements-optional.txt)
+AGENT9_BACKEND = os.getenv("AGENT9_BACKEND", "pca_autoencoder")
+
+# --- Hugging Face model IDs (Step 3 - Document Understanding) ---
+DIT_MODEL_ID = os.getenv("DIT_MODEL_ID", "microsoft/dit-base")
+LAYOUTLMV3_MODEL_ID = os.getenv("LAYOUTLMV3_MODEL_ID", "microsoft/layoutlmv3-base")
+DONUT_MODEL_ID = os.getenv("DONUT_MODEL_ID", "naver-clova-ix/donut-base")
 
 # --- Rendering ---
 RASTER_DPI = int(os.getenv("RASTER_DPI", "150"))  # all bboxes are in 150-DPI px
@@ -99,6 +118,7 @@ AGENT_WEIGHTS = {
     "agent_9": 0.9,
     "agent_10": 0.9,
     "agent_11": 0.6,
+    "agent_13": 0.85,
 }
 
 # Human-readable agent names (used by UI + SHAP panel).

@@ -135,7 +135,7 @@ python scripts/index_templates.py --source azure_blob
 python scripts/finetune_agent9.py --source azure_blob
 ```
 Notes: `index_templates.py` is incremental (re-running only adds new files, keyed by
-`<doc_type>/<filename>`). `finetune_agent9.py` writes `models/agent9_weights/patchcore_pca.npz`,
+`<doc_type>/<filename>`). `finetune_agent9.py` writes `models/agent9_weights/agent9_autoencoder.npz`,
 which Agent 9 auto-loads next run (else it uses the per-document fallback). **Do not fine-tune on
 the shipped synthetic placeholder templates** — it makes A9 over-flag; use a real corpus only.
 

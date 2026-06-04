@@ -23,6 +23,19 @@ import numpy as np
 import config
 from pipeline.utils import heatmap_to_bboxes, load_page_image, logger, safe_agent
 
+# ──────────────────────────────────────────────────────────
+# Agent 9 — Novel Fraud Detection
+# Current backend: PCA linear autoencoder (AGENT9_BACKEND=pca_autoencoder)
+# This is the approved fallback per SETUP.md — PatchCore/DRAEM require
+# anomalib + GPU and were not available during the POC build.
+#
+# To upgrade to PatchCore or DRAEM:
+#   1. Install requirements-optional.txt (torch + anomalib).
+#   2. Set AGENT9_BACKEND=patchcore in .env.
+#   3. Re-run: python scripts/finetune_agent9.py --source local
+#   The agent interface (score, flagged_regions output schema) is unchanged.
+# ──────────────────────────────────────────────────────────
+
 AGENT_ID = "agent_9"
 _PATCH = 32
 _STRIDE = 32
@@ -49,7 +62,7 @@ def _robust_z(err: np.ndarray) -> np.ndarray:
 # --------------------- global (fine-tuned) model --------------------- #
 _GLOBAL_MODEL: dict[str, Any] | None = None
 _GLOBAL_TRIED = False
-_WEIGHTS_FILE = "patchcore_pca.npz"
+_WEIGHTS_FILE = "agent9_autoencoder.npz"
 
 
 def _load_global_model() -> dict[str, Any] | None:

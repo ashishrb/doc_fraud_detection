@@ -17,8 +17,8 @@ The mandated fallback model is a PCA linear autoencoder (no torch needed). It is
 fit on content patches drawn from every authentic document found at the source;
 the reconstruction-error median/MAD over that corpus are stored so the live
 agent can compute robust-z novelty scores against the authentic distribution.
-Weights are written to models/agent9_weights/patchcore_pca.npz, overwriting the
-previous checkpoint. Agent 9 loads them automatically on the next run.
+Weights are written to models/agent9_weights/agent9_autoencoder.npz, overwriting
+the previous checkpoint. Agent 9 loads them automatically on the next run.
 """
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def main() -> int:
     err_mad = float(np.median(np.abs(err - err_median)))
 
     config.AGENT9_WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = config.AGENT9_WEIGHTS_DIR / "patchcore_pca.npz"
+    out = config.AGENT9_WEIGHTS_DIR / "agent9_autoencoder.npz"
     np.savez(
         out,
         components=pca.components_.astype(np.float32),
