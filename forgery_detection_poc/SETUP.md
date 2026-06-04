@@ -39,27 +39,28 @@ sudo apt-get update && sudo apt-get install -y \
 ```bash
 git clone <REPO_URL>
 cd forgery_detection_poc
-
 python -m venv .venv && source .venv/bin/activate   # optional but recommended
+
+# 1. Install production dependencies (required)
 pip install -r requirements.txt
+
+# 2. Install spaCy language model (required)
 python -m spacy download en_core_web_sm
+
+# 3. Install dev dependencies (required for dry run and tests)
+pip install -r requirements-dev.txt
+
+# 4. Install optional GPU dependencies (only if upgrading Agent 9 to PatchCore/DRAEM)
+# pip install -r requirements-optional.txt
 ```
 
-`requirements.txt` installs only the **required, CPU-only** stack (FastAPI,
-PyMuPDF, Pillow, OpenCV-headless, pytesseract, pdfminer.six, imagehash,
-datasketch, faiss-cpu, spaCy, symspellpy, pyzbar, scikit-learn, lightgbm, shap,
-fpdf2). Optional heavy components are commented at the bottom of the file:
+The dependencies are split across three pinned files:
 
-```bash
-# Optional — heavy deep-learning models (Step 3 + Agent 2). Large downloads.
-pip install torch transformers timm
-
-# Optional — 2nd OCR engine (activates Agent 10). Downloads weights on first use.
-pip install paddleocr paddlepaddle
-
-# Optional — external LLM (Step 5) / cloud OCR (Step 2 primary)
-pip install openai anthropic azure-ai-documentintelligence
-```
+| File | Required? | Contents |
+|------|-----------|----------|
+| `requirements.txt` | **Required** | Full CPU pipeline: Agents 1-11 + Agent 13/14 (Claude), all 8 steps (FastAPI, PyMuPDF, OpenCV-headless, transformers, paddleocr, faiss-cpu, openai, anthropic, azure-ai-documentintelligence, spaCy, etc.). |
+| `requirements-dev.txt` | **Required for dry run / tests** | `pytest`, `httpx`, `fpdf2`. |
+| `requirements-optional.txt` | Optional (GPU only) | `torch`, `torchvision`, `anomalib` — only for upgrading Agent 9 from the PCA autoencoder to PatchCore/DRAEM (`AGENT9_BACKEND=patchcore`). |
 
 ---
 
@@ -150,7 +151,7 @@ python scripts/index_templates.py --source local
 python scripts/index_templates.py --source azure_blob
 
 # Re-train Agent 9 (novelty) on the authentic corpus; writes
-# models/agent9_weights/patchcore_pca.npz, which Agent 9 auto-loads next run.
+# models/agent9_weights/agent9_autoencoder.npz, which Agent 9 auto-loads next run.
 python scripts/finetune_agent9.py --source azure_blob
 ```
 
@@ -234,7 +235,7 @@ packages** installed. Realised behaviour:
 | Agent 11 — Adversarial | **active** (5 perturbations re-run ELA) | — |
 | Step 2 OCR | **Tesseract only** | Azure DI key absent; PaddleOCR disabled (see Agent 10) |
 | Step 3 LayoutLMv3 / Donut / DiT | **fallback** | `torch`/`transformers`/`timm` not installed → deterministic 768-d embedding + regex/OCR field extraction; FAISS OOD still runs |
-| Step 5 Cross-document LLM | **rule-based fallback** | no Azure OpenAI (`AZURE_OPENAI_*`) / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`; deterministic contradiction rules used (still detected `designation_mismatch`). Backend preference: Azure OpenAI → OpenAI → Anthropic → rule-based |
+| Step 5 Cross-document LLM | **rule-based fallback** | no Azure OpenAI (`AZURE_OPENAI_*`) / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`; deterministic contradiction rules used (still detected `designation_mismatch`). Backend: Azure OpenAI (GPT-4 Turbo) only. When Azure OpenAI is not configured, degrades directly to rule-based fallback. Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_DEPLOYMENT in .env to enable. |
 | Step 6 calibration | **raw weighted score** | isotonic calibration needs >50 labelled examples in `models/labels.json` |
 
 Nothing in the list crashes the pipeline — each is an explicit graceful-

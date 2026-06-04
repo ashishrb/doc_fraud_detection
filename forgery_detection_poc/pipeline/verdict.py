@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 import config
+from pipeline.agents import agent14_adjudicator
 from pipeline.meta_learner import meta_score
 from pipeline.utils import clamp_bbox
 
@@ -55,7 +56,8 @@ def _escalation_rules(ctx: dict[str, Any], meta: dict[str, Any]) -> dict[str, An
     # Rule 2 - disagreement with ensemble
     ens = meta["fraud_score"]
     strong_disagree = [aid for aid, f in findings.items()
-                       if abs(f.get("score", 0.0) - ens)
+                       if "error" not in f
+                       and abs(f.get("score", 0.0) - ens)
                        > config.RULE2_DISAGREEMENT_DELTA]
     flags["disagreeing_agents"] = strong_disagree
     flags["disagreement_override"] = len(strong_disagree) >= config.RULE2_MIN_AGENTS
@@ -84,6 +86,21 @@ def build_document_verdict(ctx: dict[str, Any],
     esc = _escalation_rules(ctx, meta)
     regions = _collect_regions(ctx)
 
+    # Agent 14 (Cross-Agent Adjudicator) - runs only when Rule 2 fires, AFTER
+    # the ensemble. It can override the ensemble fraud score with a reasoned
+    # consensus verdict; on any error the ensemble verdict stands unchanged.
+    fraud_score = meta["fraud_score"]
+    adjudication: dict[str, Any] = {}
+    if esc["flags"].get("disagreement_override"):
+        result = agent14_adjudicator.run(ctx.get("agent_findings", {}),
+                                         meta["fraud_score"])
+        if "error" in result:
+            adjudication = {"adjudication_applied": False,
+                            "adjudication_error": result["error"]}
+        else:
+            fraud_score = result["score"]
+            adjudication = {"adjudication_applied": True}
+
     return {
         "doc_id": ctx["doc_id"],
         "filename": ctx["filename"],
@@ -92,7 +109,8 @@ def build_document_verdict(ctx: dict[str, Any],
         "pages": [{"page": p["page"], "width": p["width"], "height": p["height"],
                    "raster_url": f"/raster/{ctx['doc_id']}/{p['page']}"}
                   for p in ctx["pages"]],
-        "fraud_score": meta["fraud_score"],
+        "fraud_score": fraud_score,
+        **adjudication,
         "band": esc["band"],
         "top_agents": meta["top_agents"],
         "shap_top_agents": meta["shap_top_agents"],

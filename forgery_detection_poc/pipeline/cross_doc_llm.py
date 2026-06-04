@@ -1,10 +1,13 @@
 """Step 5 - Cross-Document LLM Reasoning.
 
 Bundles extracted text + field JSONs from all of a candidate's documents and
-asks an LLM to enumerate inter-document contradictions. Backend preference:
-Azure OpenAI (Azure AI Foundry) -> OpenAI -> Anthropic. When no API key/SDK is
-available, a deterministic rule-based fallback produces the same contradiction
-schema so the pipeline still surfaces cross-doc fraud.
+asks Azure OpenAI (Azure AI Foundry, GPT-4 Turbo) to enumerate inter-document
+contradictions. Azure OpenAI is the ONLY primary LLM path: this guarantees a
+single, auditable model rather than silently substituting a different model
+depending on which keys happen to be present. When Azure OpenAI is not
+configured (or any runtime error occurs), a deterministic rule-based fallback
+produces the same contradiction schema so the pipeline still surfaces cross-doc
+fraud.
 """
 from __future__ import annotations
 
@@ -64,33 +67,6 @@ def _call_azure_openai(payload: str) -> list[dict[str, Any]]:
     return _parse_json_array(resp.choices[0].message.content)
 
 
-def _call_openai(payload: str) -> list[dict[str, Any]]:
-    from openai import OpenAI
-
-    client = OpenAI(api_key=config.OPENAI_API_KEY)
-    resp = client.chat.completions.create(
-        model=config.CROSS_DOC_MODEL,
-        temperature=0.1,
-        messages=[{"role": "system", "content": SYSTEM_PROMPT},
-                  {"role": "user", "content": payload}],
-    )
-    return _parse_json_array(resp.choices[0].message.content)
-
-
-def _call_anthropic(payload: str) -> list[dict[str, Any]]:
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    resp = client.messages.create(
-        model=config.CROSS_DOC_MODEL,
-        max_tokens=2000,
-        temperature=0.1,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": payload}],
-    )
-    return _parse_json_array(resp.content[0].text)
-
-
 def _parse_json_array(text: str) -> list[dict[str, Any]]:
     if not text:
         return []
@@ -111,7 +87,7 @@ def _fields_map(doc: dict[str, Any]) -> dict[str, str]:
             for f in doc.get("understanding", {}).get("fields", [])}
 
 
-def _rule_based(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _rule_based_fallback(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Deterministic contradiction finder used when no LLM key is configured."""
     out: list[dict[str, Any]] = []
     for i in range(len(docs)):
@@ -152,22 +128,24 @@ def analyze_cross_document(docs: list[dict[str, Any]]) -> dict[str, Any]:
     backend = "rule_based_fallback"
     contradictions: list[dict[str, Any]] = []
 
+    if not _azure_openai_configured():
+        logger.warning(
+            "Azure OpenAI not configured - cross-document reasoning degraded to "
+            "rule-based fallback. Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, "
+            "and AZURE_OPENAI_DEPLOYMENT in .env to enable GPT-4 Turbo reasoning.")
+        contradictions = _rule_based_fallback(docs)
+        logger.info("Cross-doc reasoning [%s]: %d contradiction(s)", backend,
+                    len(contradictions))
+        return {"contradictions": contradictions, "backend": backend}
+
     try:
-        if _azure_openai_configured():
-            contradictions = _call_azure_openai(payload)
-            backend = f"azure_openai:{config.AZURE_OPENAI_DEPLOYMENT}"
-        elif config.OPENAI_API_KEY:
-            contradictions = _call_openai(payload)
-            backend = f"openai:{config.CROSS_DOC_MODEL}"
-        elif config.ANTHROPIC_API_KEY:
-            contradictions = _call_anthropic(payload)
-            backend = f"anthropic:{config.CROSS_DOC_MODEL}"
-        else:
-            contradictions = _rule_based(docs)
+        contradictions = _call_azure_openai(payload)
+        backend = f"azure_openai:{config.AZURE_OPENAI_DEPLOYMENT}"
     except Exception as exc:  # noqa: BLE001
-        logger.warning("LLM cross-doc failed (%s); using rule-based fallback", exc)
-        contradictions = _rule_based(docs)
-        backend = f"rule_based_fallback (LLM error: {exc})"
+        logger.warning("Azure OpenAI cross-doc failed (%s); using rule-based "
+                       "fallback", exc)
+        contradictions = _rule_based_fallback(docs)
+        backend = f"rule_based_fallback (Azure OpenAI error: {exc})"
 
     logger.info("Cross-doc reasoning [%s]: %d contradiction(s)", backend,
                 len(contradictions))

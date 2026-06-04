@@ -1,8 +1,10 @@
 """Step 4 - Specialist Agent Ensemble orchestration.
 
-Runs all 11 mandatory agents in parallel via ThreadPoolExecutor. Each agent
-returns a structured finding; failures degrade to error stubs (handled by the
-@safe_agent decorator) so one agent can never crash the pipeline.
+Runs the mandatory agents (1-11) plus the good-to-have Agent 13 (Claude Holistic
+Plausibility) in parallel via ThreadPoolExecutor. Each agent returns a structured
+finding; failures degrade to error stubs (Agents 1-11 via the @safe_agent
+decorator, Agent 13 via its own internal guard) so one agent can never crash the
+pipeline.
 """
 from __future__ import annotations
 
@@ -14,7 +16,8 @@ from pipeline.agents import (agent1_metadata, agent2_image_forensics,
                              agent5_duplicate, agent6_temporal,
                              agent7_ner_semantic, agent8_qr_barcode,
                              agent9_novel_fraud, agent10_cross_ocr,
-                             agent11_adversarial)
+                             agent11_adversarial,
+                             agent13_holistic_plausibility)
 from pipeline.utils import logger
 
 AGENTS: list[Callable[[dict], dict]] = [
@@ -29,6 +32,7 @@ AGENTS: list[Callable[[dict], dict]] = [
     agent9_novel_fraud.run,
     agent10_cross_ocr.run,
     agent11_adversarial.run,
+    agent13_holistic_plausibility.run,
 ]
 
 

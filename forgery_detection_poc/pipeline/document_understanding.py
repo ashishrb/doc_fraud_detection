@@ -7,10 +7,10 @@ download / no GPU) the module falls back to:
   - OCR-word-anchored field extraction with bounding boxes,
   - a deterministic image-feature embedding (so the FAISS OOD check still works).
 
-Model IDs (confirmed from Hugging Face model cards):
-  - LayoutLMv3:  microsoft/layoutlmv3-base
-  - Donut:       naver-clova-ix/donut-base
-  - DiT:         microsoft/dit-base
+Model IDs (config-driven; defaults confirmed from Hugging Face model cards):
+  - LayoutLMv3:  config.LAYOUTLMV3_MODEL_ID (microsoft/layoutlmv3-base)
+  - Donut:       config.DONUT_MODEL_ID      (naver-clova-ix/donut-base)
+  - DiT:         config.DIT_MODEL_ID        (microsoft/dit-base)
 """
 from __future__ import annotations
 
@@ -70,11 +70,11 @@ class _Embedder:
             import torch  # noqa: F401
             from transformers import AutoImageProcessor, AutoModel
 
-            self._proc = AutoImageProcessor.from_pretrained("microsoft/dit-base")
-            self._dit = AutoModel.from_pretrained("microsoft/dit-base")
+            self._proc = AutoImageProcessor.from_pretrained(config.DIT_MODEL_ID)
+            self._dit = AutoModel.from_pretrained(config.DIT_MODEL_ID)
             self._dit.eval()
             self.backend = "dit-base"
-            logger.info("DiT loaded (microsoft/dit-base)")
+            logger.info("DiT loaded (%s)", config.DIT_MODEL_ID)
         except Exception as exc:  # noqa: BLE001
             logger.warning("DiT unavailable, using fallback embedding: %s", exc)
             self._dit = None
@@ -175,10 +175,10 @@ def _attempt_layoutlmv3(ctx: dict[str, Any]) -> dict[str, Any]:
         import torch  # noqa: F401
         from transformers import AutoModelForTokenClassification, AutoProcessor
 
-        AutoProcessor.from_pretrained("microsoft/layoutlmv3-base",
+        AutoProcessor.from_pretrained(config.LAYOUTLMV3_MODEL_ID,
                                       apply_ocr=False)
         AutoModelForTokenClassification.from_pretrained(
-            "microsoft/layoutlmv3-base")
+            config.LAYOUTLMV3_MODEL_ID)
         return {"available": True, "backend": "layoutlmv3-base",
                 "note": "loaded; token-classification head is randomly "
                         "initialised without fine-tuning"}
@@ -191,8 +191,8 @@ def _attempt_donut(ctx: dict[str, Any]) -> dict[str, Any]:
         import torch  # noqa: F401
         from transformers import DonutProcessor, VisionEncoderDecoderModel
 
-        DonutProcessor.from_pretrained("naver-clova-ix/donut-base")
-        VisionEncoderDecoderModel.from_pretrained("naver-clova-ix/donut-base")
+        DonutProcessor.from_pretrained(config.DONUT_MODEL_ID)
+        VisionEncoderDecoderModel.from_pretrained(config.DONUT_MODEL_ID)
         return {"available": True, "backend": "donut-base"}
     except Exception as exc:  # noqa: BLE001
         return {"available": False, "error": str(exc)}

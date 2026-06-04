@@ -1,0 +1,6 @@
+# ── Dev and test dependencies ────────────────────────────────────
+# Install for dry runs and testing only. Not required in production.
+# Usage: pip install -r requirements-dev.txt
+pytest==9.0.3
+httpx==0.28.1
+fpdf2==2.8.7
