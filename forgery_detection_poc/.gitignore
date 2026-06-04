@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+
+# Runtime artefacts
+uploads/*
+!uploads/.gitkeep
+models/*
+!models/.gitkeep
+faiss_index/*
+!faiss_index/.gitkeep
+
+# Seed assets are regenerated at startup by pipeline/seed.py
+templates/*
+!templates/.gitkeep
+adversarial_patterns/*
+!adversarial_patterns/.gitkeep
+
+# Generated rasters / debug
+*.log
+.DS_Store
+dry_run_output/
+test_matrix_output/
