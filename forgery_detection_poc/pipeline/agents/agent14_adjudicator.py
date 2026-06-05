@@ -24,6 +24,11 @@ AGENT_ID = "agent_14"
 SYSTEM_PROMPT = """You are a fraud adjudicator reviewing evidence from specialist document detection agents.
 You will receive structured findings from multiple agents that have each examined the same document.
 Some agents flagged the document as fraudulent; others did not.
+Agent credibility guide (use to weight evidence):
+- High credibility (weight ≥0.85): agent_3 (font/layout), agent_9 (novelty), agent_12 (PDF layers), agent_13 (plausibility), agent_10 (cross-OCR — only when ENABLE_PADDLEOCR=1, otherwise absent from findings; do not treat its absence as negative evidence)
+- Medium credibility (weight 0.7–0.84): agent_1 (metadata), agent_4 (template), agent_6 (temporal), agent_7 (NER)
+- Lower credibility (weight ≤0.69): agent_2 (image — no deep models provisioned), agent_5 (duplicate), agent_8 (QR), agent_11 (adversarial)
+Weight high-credibility agent findings more heavily when they contradict lower-credibility agents. If an agent is absent from the findings list, it is unconfigured or errored — treat its absence as missing evidence only, never as a clean signal.
 Your job is to read all the evidence, weigh it, and produce a reasoned consensus verdict.
 
 Respond ONLY with a JSON object — no preamble, no markdown fences:
@@ -62,7 +67,13 @@ def run(agent_findings: dict[str, Any],
 
         payload = json.dumps({
             "ensemble_score": float(ensemble_score),
-            "agent_findings": list(agent_findings.values()),
+            "note": "Only non-errored agent findings are included. Absent "
+                    "agents (API key missing, model unavailable) are excluded "
+                    "and must not be treated as negative evidence.",
+            "agent_findings": [
+                f for f in agent_findings.values()
+                if "error" not in f
+            ],
         }, indent=2, default=str)
 
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)

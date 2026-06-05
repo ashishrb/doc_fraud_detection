@@ -41,7 +41,12 @@ def _build_user_payload(docs: list[dict[str, Any]]) -> str:
                        for f in d.get("understanding", {}).get("fields", [])},
             "text_excerpt": (d.get("text", "") or "")[:3000],
         })
-    return json.dumps(bundle, indent=2)
+    instruction = (
+        "Analyse both the extracted_fields AND the text_excerpt for each "
+        "document. Contradictions may appear between field values, within "
+        "the text, or between fields and text."
+    )
+    return instruction + "\n\n" + json.dumps(bundle, indent=2)
 
 
 def _azure_openai_configured() -> bool:
@@ -60,6 +65,7 @@ def _call_azure_openai(payload: str) -> list[dict[str, Any]]:
     # On Azure OpenAI the model is addressed by the deployment name.
     resp = client.chat.completions.create(
         model=config.AZURE_OPENAI_DEPLOYMENT,
+        max_tokens=1500,
         temperature=0.1,
         messages=[{"role": "system", "content": SYSTEM_PROMPT},
                   {"role": "user", "content": payload}],

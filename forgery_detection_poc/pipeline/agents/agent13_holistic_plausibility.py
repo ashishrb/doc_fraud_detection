@@ -31,6 +31,10 @@ Check specifically for:
 - Incorrect tax slabs or assessment year references that do not match Indian tax law for that period
 - Issuers that could not plausibly issue this document type (no HR department, no payroll registration, no tax registration)
 
+If the document is clearly not an Indian document (foreign issuer, non-Indian currency, foreign regulatory references), apply general plausibility checks only — do not flag for Indian-specific tax slab or regulatory violations. Set plausibility_score to 0.7 minimum unless a general implausibility is found.
+
+If the document text is fewer than 100 words or appears to be mostly OCR noise, set plausibility_score to 0.8, flagged to false, red_flags to [], and rationale to 'Insufficient text for plausibility assessment.' Do not invent findings from sparse text.
+
 Respond ONLY with a JSON object — no preamble, no markdown fences:
 {
   "plausibility_score": <float 0.0–1.0, where 1.0 = fully plausible and 0.0 = implausible>,
@@ -60,10 +64,15 @@ def _parse_json_object(text: str) -> dict[str, Any]:
 
 def _build_user_payload(ctx: dict[str, Any]) -> str:
     fields = ctx.get("understanding", {}).get("fields", [])
+    text = (ctx.get("text", "") or "")
+    if len(text) > 6000:
+        document_text = text[:4500] + "\n...[middle omitted]...\n" + text[-1000:]
+    else:
+        document_text = text
     bundle = {
         "document_type": ctx.get("classified_type", ctx.get("doc_type")),
         "extracted_fields": {f["field"]: f["value"] for f in fields},
-        "document_text": (ctx.get("text", "") or "")[:6000],
+        "document_text": document_text,
     }
     return json.dumps(bundle, indent=2)
 
