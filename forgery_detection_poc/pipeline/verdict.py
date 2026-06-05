@@ -112,6 +112,7 @@ def build_document_verdict(ctx: dict[str, Any],
         "fraud_score": fraud_score,
         **adjudication,
         "band": esc["band"],
+        "scorer": meta.get("scorer"),
         "top_agents": meta["top_agents"],
         "shap_top_agents": meta["shap_top_agents"],
         "escalation_flags": esc["flags"],
@@ -123,7 +124,9 @@ def build_document_verdict(ctx: dict[str, Any],
 
 
 def build_candidate_verdict(candidate_id: str, doc_verdicts: list[dict[str, Any]],
-                            cross_doc: dict[str, Any]) -> dict[str, Any]:
+                            cross_doc: dict[str, Any],
+                            contexts: list[dict[str, Any]] | None = None
+                            ) -> dict[str, Any]:
     if doc_verdicts:
         overall_rank = max(_BAND_RANK[d["band"]] for d in doc_verdicts)
         overall_band = _RANK_BAND[overall_rank]
@@ -131,10 +134,20 @@ def build_candidate_verdict(candidate_id: str, doc_verdicts: list[dict[str, Any]
     else:
         overall_band, overall_score = "P2", 0.0
 
+    consent_logged_at = None
+    for c in (contexts or []):
+        if c.get("consent_logged_at"):
+            consent_logged_at = c["consent_logged_at"]
+            break
+
     return {
         "candidate_id": candidate_id,
         "band": overall_band,
         "fraud_score": overall_score,
+        "consent": {
+            "given": True,
+            "logged_at": consent_logged_at,
+        },
         "documents": doc_verdicts,
         "cross_doc_contradictions": cross_doc.get("contradictions", []),
         "cross_doc_backend": cross_doc.get("backend"),

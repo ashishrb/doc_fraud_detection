@@ -9,6 +9,12 @@ structured report and writes verdict JSONs to dry_run_output/.
 """
 from __future__ import annotations
 
+import os
+
+# Bypass the DPDP/GDPR consent gate for the dry run (dev-only). Must be set
+# before config is imported so REQUIRE_CONSENT picks it up.
+os.environ.setdefault("REQUIRE_CONSENT", "0")
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -143,7 +149,8 @@ def main() -> None:
     # Test Case A alone (expect P2)
     _reset_state()
     vA = analyze_candidate(
-        [{"filename": a_path.name, "data": _b(a_path), "doc_type": "payslip"}],
+        [{"filename": a_path.name, "data": _b(a_path), "doc_type": "payslip",
+          "consent_given": True}],
         "CAND-A")
     summarise("TEST CASE A (clean, single doc)", vA)
     (OUT / "verdict_A.json").write_text(json.dumps(vA, indent=2))
@@ -151,8 +158,10 @@ def main() -> None:
     # Test Case B as candidate pair A+B (expect B flagged + contradiction)
     _reset_state()
     vB = analyze_candidate([
-        {"filename": a_path.name, "data": _b(a_path), "doc_type": "payslip"},
-        {"filename": b_path.name, "data": _b(b_path), "doc_type": "payslip"},
+        {"filename": a_path.name, "data": _b(a_path), "doc_type": "payslip",
+         "consent_given": True},
+        {"filename": b_path.name, "data": _b(b_path), "doc_type": "payslip",
+         "consent_given": True},
     ], "CAND-B")
     summarise("TEST CASE B (clean + forged pair)", vB)
     (OUT / "verdict_B.json").write_text(json.dumps(vB, indent=2))

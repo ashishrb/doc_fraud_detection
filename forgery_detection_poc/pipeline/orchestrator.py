@@ -48,5 +48,5 @@ def analyze_candidate(files: list[dict[str, Any]], candidate_id: str
             })
 
     candidate_verdict = verdict.build_candidate_verdict(
-        candidate_id, doc_verdicts, cross)
+        candidate_id, doc_verdicts, cross, contexts)
     return to_jsonable(candidate_verdict)

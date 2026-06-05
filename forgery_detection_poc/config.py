@@ -29,6 +29,15 @@ TEMPLATE_INDEX_META_PATH = FAISS_DIR / "template_embeddings.meta.json"
 # Agent 9 saved (fine-tuned) weights, produced by scripts/finetune_agent9.py.
 AGENT9_WEIGHTS_DIR = MODELS_DIR / "agent9_weights"
 
+# Meta-learner paths (LightGBM classifier + isotonic calibrator).
+# Produced by scripts/generate_synthetic_labels.py + scripts/train_meta_learner.py.
+META_LEARNER_PATH = MODELS_DIR / "meta_learner.pkl"
+META_LEARNER_CALIBRATOR_PATH = MODELS_DIR / "meta_learner_calibrator.pkl"
+META_LEARNER_META_PATH = MODELS_DIR / "meta_learner_meta.json"
+
+# HITL (Human-in-the-Loop) reviewer decisions log (newline-delimited JSON).
+HITL_DECISIONS_PATH = MODELS_DIR / "hitl_decisions.jsonl"
+
 # --- External API Keys ---
 AZURE_DOC_INTELLIGENCE_ENDPOINT = os.getenv("AZURE_DOC_INTELLIGENCE_ENDPOINT", "")
 AZURE_DOC_INTELLIGENCE_KEY = os.getenv("AZURE_DOC_INTELLIGENCE_KEY", "")
@@ -96,6 +105,9 @@ AGENT9_THRESHOLD = float(os.getenv("AGENT9_THRESHOLD", "0.6"))
 AGENT9_NOVELTY_HIGH = float(os.getenv("AGENT9_NOVELTY_HIGH", "0.75"))
 AGENT10_THRESHOLD = float(os.getenv("AGENT10_THRESHOLD", "0.5"))
 AGENT11_DELTA_THRESHOLD = float(os.getenv("AGENT11_DELTA_THRESHOLD", "0.2"))
+
+# --- Agent 12 (PDF Layer Analysis) ---
+AGENT12_THRESHOLD = float(os.getenv("AGENT12_THRESHOLD", "0.3"))
 RULE1_UNCERTAINTY_THRESHOLD = float(os.getenv("RULE1_UNCERTAINTY_THRESHOLD", "0.25"))
 
 # --- Band Thresholds (per BRD) ---
@@ -116,6 +128,7 @@ AGENT_WEIGHTS = {
     "agent_9": 0.9,
     "agent_10": 0.9,
     "agent_11": 0.6,
+    "agent_12": 0.85,
     "agent_13": 0.85,
 }
 
@@ -132,6 +145,7 @@ AGENT_NAMES = {
     "agent_9": "Novel Fraud",
     "agent_10": "Cross-OCR Disagreement",
     "agent_11": "Adversarial Robustness",
+    "agent_12": "PDF Layer Analysis",
     "agent_13": "Holistic Plausibility",
     "agent_14": "Cross-Agent Adjudicator",
 }
@@ -198,6 +212,10 @@ DEFAULT_FIELD_CRITICALITY = 0.3
 # Escalation rule thresholds (Step 7).
 RULE2_DISAGREEMENT_DELTA = float(os.getenv("RULE2_DISAGREEMENT_DELTA", "0.4"))
 RULE2_MIN_AGENTS = int(os.getenv("RULE2_MIN_AGENTS", "2"))
+
+# --- Consent / DPDP compliance ---
+REQUIRE_CONSENT = os.getenv("REQUIRE_CONSENT", "1") == "1"
+# Set to "0" only in development/dry-run environments where consent UI is bypassed.
 
 # Upload limits (Step 1).
 MAX_FILE_BYTES = int(os.getenv("MAX_FILE_BYTES", str(50 * 1024 * 1024)))  # 50 MB
