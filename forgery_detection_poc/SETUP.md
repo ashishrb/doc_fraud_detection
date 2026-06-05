@@ -96,6 +96,8 @@ Copy `.env.example` to `.env` and fill in what you have. **All keys are optional
 | `RULE1_UNCERTAINTY_THRESHOLD` | optional | escalation Rule 1 std-dev cutoff (0.25) | n/a |
 | `RULE2_DISAGREEMENT_DELTA` / `RULE2_MIN_AGENTS` | optional | escalation Rule 2 (0.4 / 2) | n/a |
 | `MAX_FILE_BYTES` | optional | upload size limit (50 MB) | n/a |
+| `AGENT12_THRESHOLD` | optional | Agent 12 PDF-layer aggregate score cutoff (0.3) | n/a |
+| `REQUIRE_CONSENT` | optional | Enforces DPDP/GDPR consent gate on /analyze (default 1=on). Set 0 to bypass in dev/dry-run only. | n/a |
 
 ---
 
@@ -170,6 +172,50 @@ Switching from local to Azure Blob is a **config-only** change
 
 ---
 
+## 5b. Meta-Learner Setup (LightGBM — recommended before production)
+
+The meta-learner defaults to a noisy-OR weighted heuristic when no trained model exists.
+To activate LightGBM scoring:
+
+```bash
+# Step 1: Generate synthetic training data (~2 min)
+python scripts/generate_synthetic_labels.py
+# Output: models/synthetic_labels.json (500 labeled examples)
+
+# Step 2: Train LightGBM + isotonic calibrator (~30 sec)
+python scripts/train_meta_learner.py
+# Output: models/meta_learner.pkl, models/meta_learner_calibrator.pkl
+# Prints: ROC-AUC and precision/recall/F1 on held-out test set
+
+# Step 3: Restart the app — it auto-loads the model on next startup
+```
+
+When real HITL decisions accumulate (see §5c), re-run `train_meta_learner.py` pointing
+at the HITL-labeled dataset to replace synthetic labels with real ones.
+
+---
+
+## 5c. HITL Reviewer Workflow
+
+Documents scored P0 or P1 are queued for human review. To access the reviewer UI:
+
+1. Start the application (§5).
+2. Open http://localhost:8000 and click the **HITL Review** tab.
+3. Documents awaiting review appear in the queue. Click **Review** to open the decision modal.
+4. Select **Confirm Fraud**, **Clear**, or **Escalate**, add an optional comment, and click **Submit**.
+5. Decisions are logged to `models/hitl_decisions.jsonl`.
+
+When 50+ real decisions have accumulated, retrain the meta-learner on real labels:
+
+```bash
+python scripts/train_meta_learner.py --labels models/hitl_decisions.jsonl
+```
+
+(The `--labels` flag is a future extension; for now, re-run `generate_synthetic_labels.py`
++ `train_meta_learner.py` to incorporate real decisions as they become available.)
+
+---
+
 ## 6. Running the Dry Run
 
 ```bash
@@ -233,10 +279,12 @@ packages** installed. Realised behaviour:
 | Agent 9 — Novel Fraud | **active** (per-document PCA autoencoder fallback) | PatchCore/DRAEM not installed; per-doc autoencoder used |
 | Agent 10 — Cross-OCR | **inactive** | needs a 2nd OCR engine; Azure key absent and PaddleOCR weight host unreachable (`ENABLE_PADDLEOCR=0`) |
 | Agent 11 — Adversarial | **active** (5 perturbations re-run ELA) | — |
+| Agent 12 — PDF Layer Analysis | active (pikepdf + PyMuPDF, no external deps) | — |
 | Step 2 OCR | **Tesseract only** | Azure DI key absent; PaddleOCR disabled (see Agent 10) |
 | Step 3 LayoutLMv3 / Donut / DiT | **fallback** | `torch`/`transformers`/`timm` not installed → deterministic 768-d embedding + regex/OCR field extraction; FAISS OOD still runs |
 | Step 5 Cross-document LLM | **rule-based fallback** | no Azure OpenAI (`AZURE_OPENAI_*`) / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`; deterministic contradiction rules used (still detected `designation_mismatch`). Backend: Azure OpenAI (GPT-4 Turbo) only. When Azure OpenAI is not configured, degrades directly to rule-based fallback. Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_DEPLOYMENT in .env to enable. |
 | Step 6 calibration | **raw weighted score** | isotonic calibration needs >50 labelled examples in `models/labels.json` |
+| Meta-learner | noisy-OR fallback (no model file yet) | Run scripts/generate_synthetic_labels.py + scripts/train_meta_learner.py |
 
 Nothing in the list crashes the pipeline — each is an explicit graceful-
 degradation path. To run at full fidelity, install the optional packages

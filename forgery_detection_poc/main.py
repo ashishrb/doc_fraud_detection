@@ -4,6 +4,9 @@ Endpoints:
   GET  /                      -> single-page HTML UI
   POST /analyze               -> multipart (files + candidate_id + doc_types)
   GET  /raster/{doc_id}/{n}   -> page raster PNG (for the canvas overlay)
+  GET  /hitl/queue            -> P0/P1 documents awaiting human review
+  POST /hitl/decision         -> submit a reviewer decision
+  GET  /hitl/decisions        -> all past reviewer decisions
   GET  /health                -> liveness
 """
 from __future__ import annotations
@@ -41,12 +44,41 @@ def raster(doc_id: str, page: int):
     return FileResponse(path, media_type="image/png")
 
 
+@app.get("/hitl/queue")
+async def hitl_queue():
+    """Returns list of P0/P1 documents awaiting human review."""
+    from pipeline.hitl import get_review_queue
+    return {"queue": get_review_queue()}
+
+
+@app.post("/hitl/decision")
+async def hitl_decision(payload: dict):
+    """Submit a reviewer decision for a flagged document."""
+    from pipeline.hitl import submit_decision
+    return submit_decision(payload)
+
+
+@app.get("/hitl/decisions")
+async def hitl_decisions():
+    """Returns all past reviewer decisions."""
+    from pipeline.hitl import get_decisions
+    return {"decisions": get_decisions()}
+
+
 @app.post("/analyze")
 async def analyze(
     candidate_id: str = Form(...),
     files: list[UploadFile] = File(...),
     doc_types: list[str] = Form(default=[]),
+    consent_given: str = Form(default="false"),
 ):
+    if config.REQUIRE_CONSENT and consent_given != "true":
+        return JSONResponse(
+            status_code=422,
+            content={"error": "consent_required",
+                     "message": "Candidate consent must be confirmed before "
+                                "documents can be processed."},
+        )
     if not files:
         raise HTTPException(status_code=400, detail="no files uploaded")
     if len(files) > 5:

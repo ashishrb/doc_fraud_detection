@@ -16,7 +16,7 @@ from pipeline.agents import (agent1_metadata, agent2_image_forensics,
                              agent5_duplicate, agent6_temporal,
                              agent7_ner_semantic, agent8_qr_barcode,
                              agent9_novel_fraud, agent10_cross_ocr,
-                             agent11_adversarial,
+                             agent11_adversarial, agent12_pdf_layer,
                              agent13_holistic_plausibility)
 from pipeline.utils import logger
 
@@ -32,6 +32,7 @@ AGENTS: list[Callable[[dict], dict]] = [
     agent9_novel_fraud.run,
     agent10_cross_ocr.run,
     agent11_adversarial.run,
+    agent12_pdf_layer.run,
     agent13_holistic_plausibility.run,
 ]
 

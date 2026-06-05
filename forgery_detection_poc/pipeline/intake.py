@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,9 @@ def intake_document(filename: str, data: bytes, candidate_id: str,
         "work_dir": str(work_dir),
         "pages": [],
         "duplicate_of_known_hash": False,
+        # Consent is validated by main.py before intake runs (DPDP/GDPR).
+        "consent_given": True,
+        "consent_logged_at": datetime.utcnow().isoformat() + "Z",
     }
 
     if not ok:

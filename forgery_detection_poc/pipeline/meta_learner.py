@@ -1,127 +1,82 @@
 """Step 6 - Meta-Learner & Score Calibration.
 
-- Assembles a feature vector from all agent scores + OOD + cross-doc count.
-- Computes a weighted ensemble fraud score (LightGBM is wired as a passthrough
-  weighted sum for the POC since no ground-truth labels are available).
-- Applies isotonic-regression calibration only when >50 labelled examples
-  exist (models/labels.json); otherwise uses the raw weighted score.
-- Computes SHAP attributions for the top-5 contributing agents via a linear
-  surrogate whose coefficients are the configured agent weights.
-- Assigns the P0/P1/P2 band.
+Uses a LightGBM binary classifier (trained by scripts/train_meta_learner.py)
+to compute a calibrated fraud probability from agent scores + contradiction count.
+
+Fallback: if no trained model exists (models/meta_learner.pkl absent), uses
+the original weighted noisy-OR heuristic so the pipeline always produces a score.
+The fallback is documented in SETUP.md §7.
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
+import joblib
 import numpy as np
 
 import config
 from pipeline.utils import logger
 
-_LABELS = config.MODELS_DIR / "labels.json"
-_AGENT_ORDER = [f"agent_{i}" for i in range(1, 12)]
+_MODEL = None
+_CALIBRATOR = None
+_META = None
+_TRIED = False
+_FEATURE_NAMES = [
+    "agent_1", "agent_2", "agent_3", "agent_4", "agent_5", "agent_6",
+    "agent_7", "agent_8", "agent_9", "agent_10", "agent_11", "agent_13",
+    "n_contradictions",
+]
+# Feature names that map to a specific agent (i.e. all but n_contradictions).
+_AGENT_FEATURES = [f for f in _FEATURE_NAMES if f != "n_contradictions"]
 
 
-def build_feature_vector(ctx: dict[str, Any],
-                         contradiction_count: int) -> dict[str, float]:
-    findings = ctx.get("agent_findings", {})
-    feats: dict[str, float] = {}
-    for aid in _AGENT_ORDER:
-        f = findings.get(aid, {})
-        feats[f"{aid}_score"] = float(f.get("score", 0.0))
-        feats[f"{aid}_flagged"] = 1.0 if f.get("flagged") else 0.0
-        feats[f"{aid}_nregions"] = float(len(f.get("flagged_regions", [])))
-    ood = ctx.get("understanding", {}).get("ood", {})
-    feats["ood_distance"] = float(ood.get("distance") or 0.0)
-    feats["ood_is_ood"] = 1.0 if ood.get("is_ood") else 0.0
-    feats["contradiction_count"] = float(contradiction_count)
-    feats["n_pages"] = float(len(ctx.get("pages", [])))
-    feats["duplicate_hash"] = 1.0 if ctx.get("duplicate_of_known_hash") else 0.0
-    return feats
-
-
-def _weighted_score(findings: dict[str, dict]) -> tuple[float, np.ndarray, np.ndarray]:
-    """Return (aggregated_score, scores, weights).
-
-    Spec asks for a weighted ensemble in [0,1]. A plain weighted *average* over
-    all 11 agents dilutes single-category detections (a forgery typically fires
-    only a few relevant agents), pushing obvious fraud into P2. We therefore
-    aggregate with a weight-exponented noisy-OR, which keeps a strong detection
-    from being washed out while still honouring per-agent weights. The raw
-    weighted average is still reported separately for transparency.
-    """
-    weights = np.array([config.AGENT_WEIGHTS[a] for a in _AGENT_ORDER])
-    # Gate by each agent's own flag decision: a sub-threshold score (e.g. ELA's
-    # mild response to text edges) is treated as no-signal so it cannot inflate
-    # the ensemble. Flagged regions drive the verdict.
-    scores = np.array([float(findings.get(a, {}).get("score", 0.0))
-                       if findings.get(a, {}).get("flagged") else 0.0
-                       for a in _AGENT_ORDER])
-    w_norm = weights / weights.max()
-    noisy_or = 1.0 - float(np.prod((1.0 - np.clip(scores, 0, 0.999)) ** w_norm))
-    return noisy_or, scores, weights
-
-
-def raw_weighted_average(findings: dict[str, dict], weights: np.ndarray) -> float:
-    raw = np.array([float(findings.get(a, {}).get("score", 0.0))
-                    for a in _AGENT_ORDER])
-    return float((weights * raw).sum() / weights.sum())
-
-
-def _lightgbm_passthrough(feats: dict[str, float], base: float) -> float:
-    """LightGBM is instantiated but acts as a passthrough weighted sum for the
-    POC (no labels). Kept so the calibration path is real and swappable."""
-    try:
-        import lightgbm as lgb  # noqa: F401
-        # A trained model would go here; for the POC we return the weighted sum.
-        return base
-    except Exception:  # noqa: BLE001
-        return base
-
-
-def _calibrate(score: float) -> tuple[float, str]:
-    if _LABELS.exists():
+def _load_model() -> None:
+    global _MODEL, _CALIBRATOR, _META, _TRIED
+    if _TRIED:
+        return
+    _TRIED = True
+    model_path = config.MODELS_DIR / "meta_learner.pkl"
+    calib_path = config.MODELS_DIR / "meta_learner_calibrator.pkl"
+    if model_path.exists() and calib_path.exists():
         try:
-            data = json.loads(_LABELS.read_text())
-            if isinstance(data, list) and len(data) > 50:
-                from sklearn.isotonic import IsotonicRegression
-
-                xs = [d["raw"] for d in data]
-                ys = [d["label"] for d in data]
-                iso = IsotonicRegression(out_of_bounds="clip").fit(xs, ys)
-                return float(iso.predict([score])[0]), "isotonic"
+            _MODEL = joblib.load(model_path)
+            _CALIBRATOR = joblib.load(calib_path)
+            logger.info("Meta-learner: loaded LightGBM model from %s", model_path)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Isotonic calibration skipped: %s", exc)
-    return score, "raw (insufficient labels)"
+            logger.warning("Meta-learner: failed to load model (%s); using "
+                           "noisy-OR fallback", exc)
+            _MODEL = None
+    else:
+        logger.info("Meta-learner: no trained model found; using noisy-OR "
+                    "fallback. Run scripts/generate_synthetic_labels.py then "
+                    "scripts/train_meta_learner.py.")
 
 
-def _shap_top_agents(scores: np.ndarray, weights: np.ndarray):
-    try:
-        import shap
-        from sklearn.linear_model import LinearRegression
+def _feature_vector(findings: dict, n_contradictions: int) -> np.ndarray:
+    vec: list[float] = []
+    for fname in _FEATURE_NAMES:
+        if fname == "n_contradictions":
+            vec.append(float(n_contradictions))
+        else:
+            vec.append(float(findings.get(fname, {}).get("score", 0.0)))
+    return np.array(vec, dtype=np.float32).reshape(1, -1)
 
-        coef = weights / weights.sum()
-        surrogate = LinearRegression()
-        # Fit surrogate exactly to the linear weighted sum.
-        X_fit = np.random.RandomState(0).uniform(0, 1, size=(256, len(weights)))
-        surrogate.fit(X_fit, X_fit @ coef)
-        # Baseline = all-clean (zeros) so each attribution is the agent's own
-        # marginal push toward the fraud verdict. A 0.5-mean background instead
-        # makes non-firing high-weight agents dominate with large negative
-        # contributions, which is technically valid but hides the real drivers.
-        X_bg = np.zeros((32, len(weights)))
-        explainer = shap.LinearExplainer(
-            surrogate, X_bg, feature_perturbation="interventional")
-        sv = explainer.shap_values(scores.reshape(1, -1))[0]
-        contrib = {a: float(v) for a, v in zip(_AGENT_ORDER, sv)}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("SHAP failed, using weight*score attribution: %s", exc)
-        contrib = {a: float(w * s) for a, w, s in
-                   zip(_AGENT_ORDER, weights, scores)}
-    top = sorted(contrib.items(), key=lambda kv: abs(kv[1]), reverse=True)[:5]
-    return [{"agent_id": a, "agent_name": config.AGENT_NAMES[a],
-             "contribution": round(v, 4)} for a, v in top], contrib
+
+def _noisy_or_fallback(findings: dict, n_contradictions: int) -> float:
+    """Original weighted heuristic - used when no trained model exists."""
+    weights = config.AGENT_WEIGHTS
+    total_w, total_score = 0.0, 0.0
+    for aid, f in findings.items():
+        if "error" in f:
+            continue
+        w = weights.get(aid, 0.5)
+        s = float(f.get("score", 0.0))
+        if f.get("flagged", False):
+            total_score += w * s
+        total_w += w
+    raw = total_score / total_w if total_w > 0 else 0.0
+    raw = min(1.0, raw + n_contradictions * 0.1)
+    return round(raw, 3)
 
 
 def assign_band(score: float) -> str:
@@ -132,32 +87,75 @@ def assign_band(score: float) -> str:
     return "P0"
 
 
-def meta_score(ctx: dict[str, Any], contradiction_count: int) -> dict[str, Any]:
+def _top_agents(findings: dict) -> list[str]:
+    scored = [(aid, float(findings.get(aid, {}).get("score", 0.0)))
+              for aid in _AGENT_FEATURES]
+    scored.sort(key=lambda kv: kv[1], reverse=True)
+    return [aid for aid, s in scored[:5] if s > 0.0]
+
+
+def _format_contrib(contrib: dict[str, float]) -> list[dict[str, Any]]:
+    top = sorted(contrib.items(), key=lambda kv: abs(kv[1]), reverse=True)[:5]
+    return [{"agent_id": a, "agent_name": config.AGENT_NAMES.get(a, a),
+             "contribution": round(float(v), 4)} for a, v in top]
+
+
+def _compute_shap(findings: dict, n_contradictions: int) -> list[dict[str, Any]]:
+    """SHAP attributions from the trained LightGBM model (TreeExplainer)."""
+    try:
+        import shap
+
+        X = _feature_vector(findings, n_contradictions)
+        explainer = shap.TreeExplainer(_MODEL)
+        sv = explainer.shap_values(X)
+        # Binary classifiers may return a list [class0, class1]; take class 1.
+        if isinstance(sv, list):
+            sv = sv[1] if len(sv) > 1 else sv[0]
+        sv = np.asarray(sv).reshape(-1)
+        contrib = {name: float(sv[i]) for i, name in enumerate(_FEATURE_NAMES)
+                   if name in _AGENT_FEATURES}
+        return _format_contrib(contrib)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SHAP (LightGBM) failed: %s; using weight*score", exc)
+        return _fallback_shap(findings)
+
+
+def _fallback_shap(findings: dict) -> list[dict[str, Any]]:
+    weights = config.AGENT_WEIGHTS
+    contrib = {aid: float(weights.get(aid, 0.5)
+                          * findings.get(aid, {}).get("score", 0.0))
+               for aid in _AGENT_FEATURES}
+    return _format_contrib(contrib)
+
+
+def meta_score(ctx: dict[str, Any], n_contradictions: int) -> dict[str, Any]:
+    _load_model()
     findings = ctx.get("agent_findings", {})
-    base, scores, weights = _weighted_score(findings)
-    raw_avg = raw_weighted_average(findings, weights)
 
-    # cross-doc + OOD boosters
-    ood = ctx.get("understanding", {}).get("ood", {})
-    boost = min(0.1 * contradiction_count, 0.3)
-    if ood.get("is_ood"):
-        boost += 0.1
-    raw = float(np.clip(base + boost, 0, 1))
+    if _MODEL is not None and _CALIBRATOR is not None:
+        try:
+            X = _feature_vector(findings, n_contradictions)
+            raw_prob = float(_MODEL.predict_proba(X)[0, 1])
+            fraud_score = float(_CALIBRATOR.predict([raw_prob])[0])
+            fraud_score = round(min(1.0, max(0.0, fraud_score)), 3)
+            scorer = "lightgbm+isotonic"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Meta-learner inference failed (%s); using noisy-OR "
+                           "fallback", exc)
+            fraud_score = _noisy_or_fallback(findings, n_contradictions)
+            scorer = "noisy_or_fallback"
+    else:
+        fraud_score = _noisy_or_fallback(findings, n_contradictions)
+        scorer = "noisy_or_fallback"
 
-    raw = _lightgbm_passthrough(build_feature_vector(ctx, contradiction_count), raw)
-    calibrated, calib_method = _calibrate(raw)
-    top_agents, contrib = _shap_top_agents(scores, weights)
-    band = assign_band(calibrated)
+    band = assign_band(fraud_score)
+    shap_top = (_compute_shap(findings, n_contradictions)
+                if _MODEL is not None else _fallback_shap(findings))
 
     return {
-        "fraud_score": round(calibrated, 4),
-        "ensemble_noisy_or": round(base, 4),
-        "raw_weighted_average": round(raw_avg, 4),
-        "score_with_boost": round(raw, 4),
-        "calibration": calib_method,
+        "fraud_score": fraud_score,
         "band": band,
-        "top_agents": [t["agent_id"] for t in top_agents],
-        "shap_top_agents": top_agents,
-        "shap_contributions": {k: round(v, 4) for k, v in contrib.items()},
-        "features": build_feature_vector(ctx, contradiction_count),
+        "scorer": scorer,
+        "top_agents": _top_agents(findings),
+        "shap_top_agents": shap_top,
     }

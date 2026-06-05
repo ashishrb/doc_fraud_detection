@@ -85,14 +85,51 @@
   .spinner { display:none; margin-left:10px; }
   .spinner.on { display:inline-block; }
   .hidden { display: none; }
+  /* Nav tabs */
+  nav.tabs { display:flex; gap:8px; margin-left:auto; }
+  nav.tabs button { background: var(--panel2); border:1px solid var(--border);
+      color: var(--muted); padding:8px 16px; font-size:13px; font-weight:600; }
+  nav.tabs button.active { background: var(--blue); color:#fff; border-color: var(--blue); }
+  /* Consent block */
+  .consent-block { margin: 16px 0 4px; background: var(--panel2);
+      border:1px solid var(--border); border-radius:8px; padding:12px 14px; }
+  .consent-label { display:flex; gap:10px; align-items:flex-start; color: var(--txt);
+      font-size:13px; margin:0; cursor:pointer; }
+  .consent-label input[type=checkbox] { margin-top:3px; width:16px; height:16px; flex:0 0 auto; }
+  .consent-error { color: var(--red); font-size:12px; margin-top:8px; }
+  /* HITL */
+  .hitl-card { border:1px solid var(--border); border-radius:10px; padding:14px 16px;
+      margin-bottom:12px; background: var(--panel2); }
+  .hitl-card .hc-head { display:flex; justify-content:space-between; align-items:center;
+      flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+  .hitl-card .agents { font-size:12px; color: var(--muted); margin:6px 0; }
+  /* Modal */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100;
+      display:none; align-items:flex-start; justify-content:center; overflow:auto; padding:40px 16px; }
+  .modal-overlay.on { display:flex; }
+  .modal { background: var(--panel); border:1px solid var(--border); border-radius:12px;
+      padding:22px; width:100%; max-width:640px; }
+  .modal h3 { margin:0 0 12px; font-size:16px; }
+  .modal textarea { width:100%; background: var(--panel2); color: var(--txt);
+      border:1px solid var(--border); border-radius:8px; padding:9px 11px; font-size:13px;
+      font-family:inherit; resize:vertical; min-height:64px; }
+  .decision-btns { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0; }
+  button.danger { background: var(--red); }
+  button.success { background: var(--green); }
+  button.warn { background: var(--amber); color:#1a1a1a; }
+  button.sel-decision { outline:3px solid var(--blue); }
 </style>
 </head>
 <body>
 <header>
   <h1>Document Forgery Detection</h1>
   <span class="sub">multi-agent forensic analysis &middot; POC</span>
+  <nav class="tabs">
+    <button id="tabAnalyze" class="active" onclick="showView('analyze')">Analyze</button>
+    <button id="tabHitl" onclick="showView('hitl')">HITL Review</button>
+  </nav>
 </header>
-<main>
+<main id="analyzeView">
   <!-- Upload panel -->
   <section class="panel" id="uploadPanel">
     <h2>1 &middot; Upload candidate documents</h2>
@@ -106,8 +143,22 @@
     <input type="file" id="fileInput" multiple
            accept=".pdf,.docx,.jpg,.jpeg,.png,.tiff,.tif" />
     <div id="fileRows" style="margin-top:12px"></div>
+    <div class="consent-block">
+      <label class="consent-label">
+        <input type="checkbox" id="consentCheckbox" required>
+        <span>
+          I confirm that the candidate has provided consent for their documents to be
+          processed for background verification under the
+          Digital Personal Data Protection Act (DPDP) 2023 and applicable data
+          protection regulations. Processing will not proceed without this confirmation.
+        </span>
+      </label>
+      <div id="consentError" class="consent-error" style="display:none;">
+        Candidate consent is required before documents can be analyzed.
+      </div>
+    </div>
     <div class="row" style="margin-top:14px">
-      <button id="analyzeBtn">Analyze documents</button>
+      <button id="analyzeBtn" disabled>Analyze documents</button>
       <span class="spinner muted" id="spinner">Analyzing&hellip; this can take a moment.</span>
     </div>
   </section>
@@ -144,6 +195,42 @@
     </div>
   </section>
 </main>
+
+<!-- HITL Review view -->
+<main id="hitlView" class="hidden">
+  <section class="panel">
+    <h2>Review queue &middot; P0 / P1 documents</h2>
+    <div id="hitlQueue"><div class="muted">Loading&hellip;</div></div>
+  </section>
+  <section class="panel">
+    <h2>Decisions log</h2>
+    <div id="hitlDecisionsCount" class="muted" style="margin-bottom:10px"></div>
+    <div id="hitlDecisions"></div>
+  </section>
+</main>
+
+<!-- HITL review modal -->
+<div class="modal-overlay" id="reviewModal">
+  <div class="modal">
+    <h3 id="rmTitle">Review document</h3>
+    <div id="rmMeta" class="muted" style="margin-bottom:12px"></div>
+    <div class="muted" style="margin-bottom:6px">Agent findings</div>
+    <div id="rmFindings" style="margin-bottom:14px"></div>
+    <div class="muted" style="margin-bottom:6px">Flagged regions</div>
+    <div id="rmRegions" style="margin-bottom:14px"></div>
+    <div class="decision-btns">
+      <button class="danger" data-decision="confirmed_fraud" onclick="selectDecision(this)">Confirm Fraud</button>
+      <button class="success" data-decision="cleared" onclick="selectDecision(this)">Clear</button>
+      <button class="warn" data-decision="escalated" onclick="selectDecision(this)">Escalate</button>
+    </div>
+    <label for="rmComment">Comment (optional, max 500 chars)</label>
+    <textarea id="rmComment" maxlength="500" placeholder="Reviewer notes&hellip;"></textarea>
+    <div class="row" style="margin-top:14px; justify-content:flex-end">
+      <button class="secondary" onclick="closeModal()">Cancel</button>
+      <button id="rmSubmit" onclick="submitDecision()">Submit</button>
+    </div>
+  </div>
+</div>
 <div class="tooltip" id="tooltip"></div>
 
 <script>
@@ -167,6 +254,11 @@ fileInput.addEventListener('change', () => {
   if (fileInput.files.length > 5) alert('Only the first 5 files will be analyzed.');
 });
 
+document.getElementById('consentCheckbox').addEventListener('change', function() {
+  document.getElementById('analyzeBtn').disabled = !this.checked;
+  document.getElementById('consentError').style.display = this.checked ? 'none' : '';
+});
+
 document.getElementById('analyzeBtn').addEventListener('click', analyze);
 document.getElementById('exportBtn').addEventListener('click', () => {
   if (!lastVerdict) return;
@@ -180,8 +272,13 @@ document.getElementById('exportBtn').addEventListener('click', () => {
 async function analyze() {
   const files = [...fileInput.files].slice(0,5);
   if (!files.length) { alert('Select at least one document.'); return; }
+  if (!document.getElementById('consentCheckbox').checked) {
+    document.getElementById('consentError').style.display = '';
+    return;
+  }
   const fd = new FormData();
   fd.append('candidate_id', document.getElementById('candidateId').value || 'CAND');
+  fd.append('consent_given', 'true');
   const selects = [...fileRows.querySelectorAll('select')];
   files.forEach((f, i) => {
     fd.append('files', f);
@@ -391,6 +488,160 @@ function renderContradictions(list) {
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+/* ---------------- HITL Review ---------------- */
+let currentReviewDoc = null;
+let selectedDecision = null;
+
+function showView(view) {
+  const analyze = view === 'analyze';
+  document.getElementById('analyzeView').classList.toggle('hidden', !analyze);
+  document.getElementById('hitlView').classList.toggle('hidden', analyze);
+  document.getElementById('tabAnalyze').classList.toggle('active', analyze);
+  document.getElementById('tabHitl').classList.toggle('active', !analyze);
+  if (!analyze) loadHitl();
+}
+
+async function loadHitl() {
+  await Promise.all([loadQueue(), loadDecisions()]);
+}
+
+async function loadQueue() {
+  const wrap = document.getElementById('hitlQueue');
+  wrap.innerHTML = '<div class="muted">Loading&hellip;</div>';
+  try {
+    const resp = await fetch('/hitl/queue');
+    const data = await resp.json();
+    const queue = data.queue || [];
+    if (!queue.length) { wrap.innerHTML = '<div class="muted">No documents pending review.</div>'; return; }
+    wrap.innerHTML = '';
+    queue.forEach((d, i) => {
+      const top3 = (d.top_agents || []).slice(0, 3)
+        .map(a => `${a.agent_name || a.agent_id} (${a.score != null ? a.score : 0})`)
+        .join(', ') || '—';
+      const card = document.createElement('div');
+      card.className = 'hitl-card';
+      card.innerHTML = `
+        <div class="hc-head">
+          <div><strong>${d.filename || '(unnamed)'}</strong>
+            <span class="muted"> · ${d.candidate_id || '?'}</span></div>
+          <div><span class="pill ${d.system_band}">${d.system_band}</span>
+            <span style="margin-left:10px">${pct(d.system_fraud_score)}</span></div>
+        </div>
+        <div class="agents">Top agents: ${top3}</div>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Review';
+      btn.onclick = () => openReview(d);
+      card.appendChild(btn);
+      wrap.appendChild(card);
+    });
+  } catch (e) {
+    wrap.innerHTML = `<div class="consent-error">Failed to load queue: ${e.message}</div>`;
+  }
+}
+
+async function loadDecisions() {
+  const wrap = document.getElementById('hitlDecisions');
+  const countEl = document.getElementById('hitlDecisionsCount');
+  try {
+    const resp = await fetch('/hitl/decisions');
+    const data = await resp.json();
+    const decisions = data.decisions || [];
+    countEl.textContent = `${decisions.length} decision(s) logged — run scripts/train_meta_learner.py `
+      + `to retrain when >50 real decisions are available.`;
+    if (!decisions.length) { wrap.innerHTML = '<div class="muted">No decisions logged yet.</div>'; return; }
+    let html = `<table><thead><tr><th>ID</th><th>Candidate</th><th>Filename</th>`
+      + `<th>Band</th><th>Decision</th><th>Comment</th><th>Reviewed At</th></tr></thead><tbody>`;
+    decisions.forEach(d => {
+      html += `<tr><td>${(d.decision_id || '').slice(0, 8)}</td>
+        <td>${d.candidate_id || ''}</td><td>${d.filename || ''}</td>
+        <td>${d.system_band || ''}</td><td>${d.reviewer_decision || ''}</td>
+        <td>${d.reviewer_comment || ''}</td><td>${d.reviewed_at || ''}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+  } catch (e) {
+    wrap.innerHTML = `<div class="consent-error">Failed to load decisions: ${e.message}</div>`;
+  }
+}
+
+function openReview(d) {
+  currentReviewDoc = d;
+  selectedDecision = null;
+  document.getElementById('rmTitle').textContent = `Review · ${d.filename || '(unnamed)'}`;
+  document.getElementById('rmMeta').innerHTML =
+    `Candidate: <strong>${d.candidate_id || '?'}</strong> · `
+    + `Band: <span class="pill ${d.system_band}">${d.system_band}</span> · `
+    + `Fraud score: ${pct(d.system_fraud_score)}`;
+  const fWrap = document.getElementById('rmFindings');
+  const findings = d.agent_findings || {};
+  const keys = Object.keys(findings);
+  if (!keys.length) { fWrap.innerHTML = '<div class="muted">None.</div>'; }
+  else {
+    fWrap.innerHTML = keys.map(a => {
+      const f = findings[a] || {};
+      const name = f.agent_name || a;
+      return `<div class="finding"><strong>${name}</strong> · score ${(f.score != null ? f.score : 0)}<br>
+        <span class="muted">${f.detail || f.error || ''}</span></div>`;
+    }).join('');
+  }
+  const rWrap = document.getElementById('rmRegions');
+  const regions = d.flagged_regions || [];
+  rWrap.innerHTML = regions.length
+    ? regions.map(r => `<div class="finding">p${r.page} · conf ${r.confidence != null ? r.confidence : '?'}<br>
+        <span class="muted">${r.reason || ''}</span></div>`).join('')
+    : '<div class="muted">None.</div>';
+  document.getElementById('rmComment').value = '';
+  document.querySelectorAll('.decision-btns button').forEach(b => b.classList.remove('sel-decision'));
+  document.getElementById('reviewModal').classList.add('on');
+}
+
+function selectDecision(btn) {
+  selectedDecision = btn.dataset.decision;
+  document.querySelectorAll('.decision-btns button').forEach(b => b.classList.remove('sel-decision'));
+  btn.classList.add('sel-decision');
+}
+
+function closeModal() {
+  document.getElementById('reviewModal').classList.remove('on');
+  currentReviewDoc = null; selectedDecision = null;
+}
+
+async function submitDecision() {
+  if (!currentReviewDoc) return;
+  if (!selectedDecision) { alert('Select a decision (Confirm Fraud / Clear / Escalate).'); return; }
+  const d = currentReviewDoc;
+  let summary = d.agent_findings_summary;
+  if (!summary) {
+    summary = {};
+    Object.entries(d.agent_findings || {}).forEach(([a, f]) => { summary[a] = f.score != null ? f.score : 0; });
+  }
+  const payload = {
+    candidate_id: d.candidate_id,
+    doc_id: d.doc_id,
+    filename: d.filename,
+    system_band: d.system_band,
+    system_fraud_score: d.system_fraud_score,
+    reviewer_decision: selectedDecision,
+    reviewer_comment: document.getElementById('rmComment').value || '',
+    agent_findings_summary: summary,
+  };
+  const btn = document.getElementById('rmSubmit');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/hitl/decision', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error('Server error: ' + resp.status + ' ' + await resp.text());
+    closeModal();
+    await loadHitl();
+  } catch (e) {
+    alert('Failed to submit decision: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 </script>
 </body>
